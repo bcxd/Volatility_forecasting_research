@@ -2,23 +2,187 @@ import pandas as pd
 from src.data_fetch import data_fetch, save_raw_data
 from src.data_validation import data_validation, save_processed_data
 from src.features import calculate_log_returns, variance_proxy
+from src.splits import split_data
+from src.benchmarks import persistence_var, historical_var
+from src.models import calculate_ewma, walk_forward_garch
+from src.evaluation import (
+    apply_variance_floor,
+    qlike_loss,
+    mse_loss,
+    mae_loss,
+)
+
+SYMBOL = "BTCUSDT"
+INTERVAL = "1d"
+START_DATE = "2019-01-01"
+END_DATE = "2026-01-01"
+
+TRAIN_END = "2024-01-01"
+VALIDATION_END = "2025-01-01"
+TEST_END = "2026-01-01"
+
+VARIANCE_FLOOR = 1e-12
+LAMBDA_CANDIDATES = (0.90, 0.94, 0.97, 0.99)
+
+GARCH_METHOD = "SLSQP"
+GARCH_BOUNDS = (
+    (1e-12, None),  # omega > 0
+    (0.0, 1.0),     # alpha >= 0
+    (0.0, 1.0),     # beta >= 0
+)
+GARCH_CONSTRAINTS = (
+    {
+        "type": "ineq",
+        "fun": lambda params: 1.0 - params[1] - params[2] - 1e-8,
+    },
+)
+GARCH_REFIT_EVERY = 7
+
 
 def main():
     raw_data = data_fetch(
-            symbol="BTCUSDT",
-            interval="1d",
-            start="2019-01-01",
-            end="2026-01-01",
+            symbol=SYMBOL,
+            interval=INTERVAL,
+            start=START_DATE,
+            end=END_DATE,
     )
     save_raw_data(raw_data)
-    processed_data = data_validation(raw_data)
+    processed_data = data_validation(
+        raw_data,
+        start=START_DATE,
+        end=END_DATE,
+    )
     save_processed_data(processed_data)
-    
-    df = df = processed_data.copy()
+
+    df = processed_data.copy()
     df = calculate_log_returns(df)
     df = variance_proxy(df)
     df = df.dropna(subset=["log_return", "variance_proxy"])
 
+    train_df, val_df, test_df = split_data(
+        df,
+        TRAIN_END,
+        VALIDATION_END,
+        TEST_END,
+    )
+
+    train_returns = train_df["log_return"].to_numpy()
+
+
+    validation_forecasts = {}
+    train_val_df = pd.concat([train_df, val_df]).sort_index()
+    validation_forecasts["persistence"] = persistence_var(train_val_df).loc[
+        val_df.index, "persistence_var"
+    ]
+    validation_forecasts["historical"] = historical_var(train_val_df).loc[
+        val_df.index, "historical_var"
+    ]
+    ewma_candidate_lambdas = {}
+    for lambda_ in LAMBDA_CANDIDATES:
+        column_name = f"ewma_lambda_{lambda_:.2f}"
+
+        validation_forecasts[column_name] = calculate_ewma(
+            forecast_df=val_df,
+            train_df=train_df,
+            lamda_=lambda_,
+        )
+
+        ewma_candidate_lambdas[column_name] = lambda_
+
+    validation_forecasts = pd.DataFrame(
+        validation_forecasts,
+        index=val_df.index,
+    )
+
+    validation_forecasts["garch"] = walk_forward_garch(
+        df=train_val_df,
+        forecast_dates=val_df.index,
+        method=GARCH_METHOD,
+        bounds=GARCH_BOUNDS,
+        constraints=GARCH_CONSTRAINTS,
+        refit_every=GARCH_REFIT_EVERY,
+    )
+
+    validation_metrics = {}
+    actual = val_df["variance_proxy"]
+    for column_name in validation_forecasts.columns:
+        forecast = apply_variance_floor(
+            validation_forecasts[column_name],
+            floor=VARIANCE_FLOOR,
+        )
+
+        validation_metrics[column_name] = {
+            "QLIKE": qlike_loss(actual, forecast).mean(),
+            "MSE": mse_loss(actual, forecast).mean(),
+            "MAE": mae_loss(actual, forecast).mean(),
+        }
+
+    best_name = min(
+        ewma_candidate_lambdas,
+        key=lambda name: validation_metrics[name]["QLIKE"],
+    )
+    best_lambda = ewma_candidate_lambdas[best_name]
+
+    all_df = pd.concat([train_df, val_df, test_df]).sort_index()
+
+
+    ewma_after_train = calculate_ewma(
+        forecast_df=pd.concat([val_df, test_df]),
+        train_df=train_df,
+        lamda_=best_lambda,
+    )
+
+    ewma_test = ewma_after_train.loc[test_df.index]
+    persistence_all = persistence_var(all_df)
+    historical_all = historical_var(all_df)
+    garch_test = walk_forward_garch(
+        df=all_df,
+        forecast_dates=test_df.index,
+        method=GARCH_METHOD,
+        bounds=GARCH_BOUNDS,
+        constraints=GARCH_CONSTRAINTS,
+        refit_every=GARCH_REFIT_EVERY,
+    )
+
+    test_forecasts = pd.DataFrame(index=test_df.index)
+    test_forecasts["persistence"] = persistence_all.loc[
+        test_df.index, "persistence_var"
+    ]
+    test_forecasts["historical_variance"] = historical_all.loc[
+        test_df.index, "historical_var"
+    ]
+    test_forecasts["ewma"] = ewma_test
+    test_forecasts["garch_1_1"] = garch_test
+
+    actual_test = test_df["variance_proxy"].reindex(test_forecasts.index)
+
+    for model_name in test_forecasts.columns:
+        test_forecasts[model_name] = apply_variance_floor(
+            test_forecasts[model_name],
+            floor=VARIANCE_FLOOR,
+        )
+
+    test_metrics = {}
+
+    for model_name in test_forecasts.columns:
+        forecast = test_forecasts[model_name]
+
+        test_metrics[model_name] = {
+            "QLIKE": qlike_loss(actual_test, forecast).mean(),
+            "MSE": mse_loss(actual_test, forecast).mean(),
+            "MAE": mae_loss(actual_test, forecast).mean(),
+        }
+
+    test_results = pd.DataFrame.from_dict(test_metrics, orient="index")
+    print(test_results)
+
+    plot_df = test_forecasts.copy()
+    plot_df["actual_proxy"] = actual_test.mask(actual_test <= 0)
+
+    ax = plot_df.plot(figsize=(12, 5), logy=True)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Variance")
+    ax.set_title("Test-period variance forecasts")
 
 if __name__ == "__main__":
     main()
