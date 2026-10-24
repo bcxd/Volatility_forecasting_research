@@ -1,4 +1,5 @@
 import pandas as pd
+
 from src.data_fetch import data_fetch, save_raw_data
 from src.data_validation import data_validation, save_processed_data
 from src.features import calculate_log_returns, variance_proxy
@@ -11,6 +12,7 @@ from src.evaluation import (
     mse_loss,
     mae_loss,
 )
+
 
 SYMBOL = "BTCUSDT"
 INTERVAL = "1d"
@@ -41,10 +43,10 @@ GARCH_REFIT_EVERY = 7
 
 def main():
     raw_data = data_fetch(
-            symbol=SYMBOL,
-            interval=INTERVAL,
-            start=START_DATE,
-            end=END_DATE,
+        symbol=SYMBOL,
+        interval=INTERVAL,
+        start=START_DATE,
+        end=END_DATE,
     )
     save_raw_data(raw_data)
     processed_data = data_validation(
@@ -66,15 +68,12 @@ def main():
         TEST_END,
     )
 
-    train_returns = train_df["log_return"].to_numpy()
-
-
     validation_forecasts = {}
     train_val_df = pd.concat([train_df, val_df]).sort_index()
     validation_forecasts["persistence"] = persistence_var(train_val_df).loc[
         val_df.index, "persistence_var"
     ]
-    validation_forecasts["historical"] = historical_var(train_val_df).loc[
+    validation_forecasts["historical_variance"] = historical_var(train_val_df).loc[
         val_df.index, "historical_var"
     ]
     ewma_candidate_lambdas = {}
@@ -94,7 +93,7 @@ def main():
         index=val_df.index,
     )
 
-    validation_forecasts["garch"] = walk_forward_garch(
+    validation_forecasts["garch_1_1"] = walk_forward_garch(
         df=train_val_df,
         forecast_dates=val_df.index,
         method=GARCH_METHOD,
@@ -122,9 +121,15 @@ def main():
         key=lambda name: validation_metrics[name]["QLIKE"],
     )
     best_lambda = ewma_candidate_lambdas[best_name]
+    validation_results = pd.DataFrame.from_dict(
+        validation_metrics,
+        orient="index",
+    )
+    print("\nValidation metrics:")
+    print(validation_results)
+    print(f"\nSelected EWMA lambda: {best_lambda:.2f}")
 
     all_df = pd.concat([train_df, val_df, test_df]).sort_index()
-
 
     ewma_after_train = calculate_ewma(
         forecast_df=pd.concat([val_df, test_df]),
@@ -151,7 +156,7 @@ def main():
     test_forecasts["historical_variance"] = historical_all.loc[
         test_df.index, "historical_var"
     ]
-    test_forecasts["ewma"] = ewma_test
+    test_forecasts[f"ewma_lambda_{best_lambda:.2f}"] = ewma_test
     test_forecasts["garch_1_1"] = garch_test
 
     actual_test = test_df["variance_proxy"].reindex(test_forecasts.index)
@@ -174,6 +179,7 @@ def main():
         }
 
     test_results = pd.DataFrame.from_dict(test_metrics, orient="index")
+    print("\nTest metrics:")
     print(test_results)
 
     plot_df = test_forecasts.copy()
@@ -183,6 +189,7 @@ def main():
     ax.set_xlabel("Date")
     ax.set_ylabel("Variance")
     ax.set_title("Test-period variance forecasts")
+
 
 if __name__ == "__main__":
     main()
