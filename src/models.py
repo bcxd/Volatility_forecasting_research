@@ -1,7 +1,8 @@
- # EWMA และ GARCH
-import pandas as pd
+# EWMA และ GARCH
 import numpy as np
+import pandas as pd
 from scipy.optimize import minimize
+
 
 def calculate_ewma(forecast_df, train_df, lamda_):
     if train_df.empty:
@@ -45,7 +46,7 @@ def calculate_ewma(forecast_df, train_df, lamda_):
 
     forecasts = []
     initial_variance = train_df["variance_proxy"].mean()
-    h =  initial_variance
+    h = initial_variance
 
     for squared_return in forecast_df["variance_proxy"]:
         forecasts.append(h)
@@ -61,7 +62,7 @@ def calculate_ewma(forecast_df, train_df, lamda_):
 def calculate_garch_variance(params, train_returns):
     params = np.asarray(params, dtype=float)
     if not params.shape == (3,):
-        raise ValueError("Params must contrain 3 value")
+        raise ValueError("params must contain exactly 3 values")
 
     train_returns = np.asarray(train_returns, dtype=float)
     omega, alpha, beta = params
@@ -95,6 +96,7 @@ def calculate_garch_variance(params, train_returns):
 
     return h
 
+
 def valid_garch_params(params):
     params = np.asarray(params, dtype=float)
 
@@ -107,8 +109,8 @@ def valid_garch_params(params):
         and params[1] + params[2] < 1
     )
 
-def negative_log_likelihood(params, train_returns):
 
+def negative_log_likelihood(params, train_returns):
     train_returns = np.asarray(train_returns, dtype=float)
 
     if not valid_garch_params(params):
@@ -122,13 +124,14 @@ def negative_log_likelihood(params, train_returns):
     likelihood = 0.5 * np.sum(
         np.log(2 * np.pi)
         + np.log(h)
-        + train_returns**2 / h
+        + train_returns ** 2 / h
     )
 
     if not np.isfinite(likelihood):
         return 1e100
 
     return likelihood
+
 
 def minimize_likelihood(
     train_returns,
@@ -144,7 +147,7 @@ def minimize_likelihood(
     if not np.isfinite(train_returns).all():
         raise ValueError("Returns must contain only finite values")
 
-    variance_scale = max(float(np.mean(train_returns**2)), 1e-12)
+    variance_scale = max(float(np.mean(train_returns ** 2)), 1e-12)
 
     def scaled_negative_log_likelihood(scaled_params):
         params = np.array(
@@ -190,6 +193,7 @@ def minimize_likelihood(
 
     return result
 
+
 def forecast_garch(params, forecast_returns):
     forecast_returns = np.asarray(forecast_returns, dtype=float)
     omega, alpha, beta = params
@@ -202,8 +206,15 @@ def forecast_garch(params, forecast_returns):
     )
     return forecast
 
-def walk_forward_garch(df, forecast_dates, method, bounds, constraints, refit_every):
 
+def walk_forward_garch(
+    df,
+    forecast_dates,
+    method,
+    bounds,
+    constraints,
+    refit_every,
+):
     forecasts = []
     variance_state = None
     params = None
@@ -213,10 +224,10 @@ def walk_forward_garch(df, forecast_dates, method, bounds, constraints, refit_ev
 
         if i % refit_every == 0:
             result = minimize_likelihood(
-                train_returns = history.to_numpy(),
-                method = method,
-                bounds= bounds,
-                constraints = constraints
+                train_returns=history.to_numpy(),
+                method=method,
+                bounds=bounds,
+                constraints=constraints,
             )
 
             params = result.x
@@ -225,9 +236,9 @@ def walk_forward_garch(df, forecast_dates, method, bounds, constraints, refit_ev
             omega, alpha, beta = params
 
             variance_state = (
-            omega
-            + alpha * forecast_returns[-1] ** 2
-            + beta * variance_state
+                omega
+                + alpha * forecast_returns[-1] ** 2
+                + beta * variance_state
             )
 
         forecasts.append(variance_state)

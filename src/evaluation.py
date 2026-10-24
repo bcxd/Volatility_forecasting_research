@@ -1,9 +1,9 @@
 # walk-forward และ metrics
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 
 def apply_variance_floor(forecast, floor):
-
     if not isinstance(forecast, pd.Series):
         raise TypeError("forecast must be a pandas Series")
 
@@ -22,6 +22,7 @@ def apply_variance_floor(forecast, floor):
         raise ValueError("forecast variance cannot be negative")
 
     return forecast.clip(lower=floor)
+
 
 def _validate_inputs(actual, forecast):
     if not isinstance(actual, pd.Series) or not isinstance(forecast, pd.Series):
