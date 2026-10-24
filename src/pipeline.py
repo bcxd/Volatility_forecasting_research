@@ -48,13 +48,27 @@ def main():
         start=START_DATE,
         end=END_DATE,
     )
-    save_raw_data(raw_data)
+    raw_path = save_raw_data(
+        raw_data=raw_data,
+        symbol=SYMBOL,
+        interval=INTERVAL,
+        start=START_DATE,
+        end=END_DATE,
+    )
+    print(f"Raw data saved to: {raw_path}")
     processed_data = data_validation(
         raw_data,
         start=START_DATE,
         end=END_DATE,
     )
-    save_processed_data(processed_data)
+    processed_path = save_processed_data(
+        df=processed_data,
+        symbol=SYMBOL,
+        interval=INTERVAL,
+        start=START_DATE,
+        end=END_DATE,
+    )
+    print(f"Processed data saved to: {processed_path}")
 
     df = processed_data.copy()
     df = calculate_log_returns(df)

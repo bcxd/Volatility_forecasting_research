@@ -94,7 +94,7 @@ def validate_date_range(df, start, end):
         tz="UTC",
         inclusive="left",
     )
-    missing_dates =  expected_dates.difference(df.index)
+    missing_dates = expected_dates.difference(df.index)
     if len(missing_dates) > 0:
         raise ValueError(f"Found missing dates: {missing_dates.tolist()}")
 
@@ -105,8 +105,20 @@ def validate_date_range(df, start, end):
         )
 
 
-def save_processed_data(df):
-    path = Path("data/processed/btcusdt_1d.csv")
-    path.parent.mkdir(parents=True, exist_ok=True)
+def save_processed_data(
+    df,
+    symbol,
+    interval,
+    start,
+    end,
+    output_dir=Path("data/processed"),
+):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{symbol.lower()}_{interval}_{start}_{end}.csv"
+    path = output_dir / filename
 
     df.to_csv(path, index=True, encoding="utf-8")
+
+    return path

@@ -1,7 +1,11 @@
 import pandas as pd
 import pytest
 
-from src.data_validation import data_validation, validate_date_range
+from src.data_validation import (
+    data_validation,
+    save_processed_data,
+    validate_date_range,
+)
 
 
 def make_raw_candle(date):
@@ -99,3 +103,40 @@ def test_validate_date_range_rejects_unexpected_date():
             start="2024-01-01",
             end="2024-01-03",
         )
+
+
+def test_save_processed_data_writes_expected_csv(tmp_path):
+    dates = pd.to_datetime(
+        ["2024-01-01", "2024-01-02"],
+        utc=True,
+    ).rename("open_time")
+    df = pd.DataFrame(
+        {"close": [100.0, 105.0]},
+        index=dates,
+    )
+
+    saved_path = save_processed_data(
+        df=df,
+        symbol="BTCUSDT",
+        interval="1d",
+        start="2019-01-01",
+        end="2026-01-01",
+        output_dir=tmp_path,
+    )
+
+    expected_path = tmp_path / "btcusdt_1d_2019-01-01_2026-01-01.csv"
+
+    assert saved_path == expected_path
+    assert saved_path.exists()
+
+    saved_df = pd.read_csv(
+        saved_path,
+        index_col="open_time",
+        parse_dates=["open_time"],
+    )
+
+    pd.testing.assert_frame_equal(
+        saved_df,
+        df,
+        check_freq=False,
+    )
