@@ -1,6 +1,9 @@
+import argparse
+from pathlib import Path
+
 import pandas as pd
 
-from src.data_fetch import data_fetch, save_raw_data
+from src.data_io import load_raw_snapshot, validate_snapshot_metadata
 from src.data_validation import data_validation, save_processed_data
 from src.features import calculate_log_returns, variance_proxy
 from src.splits import split_data
@@ -36,21 +39,29 @@ GARCH_CONSTRAINTS = (
 GARCH_REFIT_EVERY = 7
 
 
-def main():
-    raw_data = data_fetch(
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Run the forecasting experiment from a raw snapshot."
+    )
+    parser.add_argument(
+        "--raw-path",
+        type=Path,
+        required=True,
+        help="Path to raw JSON snapshot with adjacent metadata file.",
+    )
+    return parser
+
+
+def main(raw_path):
+    raw_data, snapshot_metadata = load_raw_snapshot(raw_path)
+    validate_snapshot_metadata(
+        snapshot_metadata,
         symbol=SYMBOL,
         interval=INTERVAL,
         start=START_DATE,
         end=END_DATE,
     )
-    raw_path = save_raw_data(
-        raw_data=raw_data,
-        symbol=SYMBOL,
-        interval=INTERVAL,
-        start=START_DATE,
-        end=END_DATE,
-    )
-    print(f"Raw data saved to: {raw_path}")
+    print(f"Raw snapshot loaded from: {raw_path}")
     processed_data = data_validation(
         raw_data,
         start=START_DATE,
@@ -188,4 +199,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    arguments = build_parser().parse_args()
+    main(arguments.raw_path)
