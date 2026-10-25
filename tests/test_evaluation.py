@@ -4,6 +4,7 @@ import pytest
 
 from src.evaluation import (
     apply_variance_floor,
+    evaluate_forecasts,
     mae_loss,
     mse_loss,
     qlike_loss,
@@ -129,3 +130,54 @@ def test_qlike_loss_rejects_nonpositive_forecast(invalid_forecast):
 
     with pytest.raises(ValueError, match="must be positive"):
         qlike_loss(actual, forecast)
+
+
+def test_evaluate_forecasts_returns_metrics_and_daily_qlike():
+    dates = pd.date_range(
+        "2024-01-01",
+        periods=2,
+        freq="D",
+        tz="UTC",
+    )
+
+    actual = pd.Series([1.0, 4.0], index=dates)
+    forecasts = pd.DataFrame(
+        {
+            "model_a": [1.0, 2.0],
+            "model_b": [2.0, 4.0],
+        },
+        index=dates,
+    )
+
+    metrics, qlike_losses, adjusted = evaluate_forecasts(
+        actual=actual,
+        forecasts=forecasts,
+        floor=1e-12,
+    )
+
+    assert metrics.index.tolist() == ["model_a", "model_b"]
+    assert metrics.columns.tolist() == ["QLIKE", "MSE", "MAE"]
+    assert qlike_losses.index.equals(dates)
+    assert qlike_losses.columns.tolist() == ["model_a", "model_b"]
+    pd.testing.assert_frame_equal(adjusted, forecasts)
+
+    expected_model_a_qlike = np.array(
+        [
+            1.0,
+            np.log(2.0) + 2.0,
+        ]
+    )
+
+    np.testing.assert_allclose(
+        qlike_losses["model_a"].to_numpy(),
+        expected_model_a_qlike,
+    )
+
+    np.testing.assert_allclose(
+        metrics.loc["model_a"].to_numpy(),
+        [
+            expected_model_a_qlike.mean(),
+            2.0,
+            1.0,
+        ],
+    )

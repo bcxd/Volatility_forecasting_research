@@ -76,3 +76,56 @@ def mae_loss(actual, forecast):
     losses = np.abs(actual_values - forecast_values)
 
     return pd.Series(losses, index=actual.index, name="mae_loss")
+
+
+def evaluate_forecasts(actual, forecasts, floor):
+    if not isinstance(actual, pd.Series):
+        raise TypeError("actual must be a pandas Series")
+
+    if not isinstance(forecasts, pd.DataFrame):
+        raise TypeError("forecasts must be a pandas DataFrame")
+
+    if forecasts.empty:
+        raise ValueError("forecasts cannot be empty")
+
+    if not forecasts.columns.is_unique:
+        raise ValueError("forecast model names must be unique")
+
+    if not actual.index.equals(forecasts.index):
+        raise ValueError("actual and forecasts must have matching dates")
+
+    adjusted_forecasts = forecasts.copy()
+    qlike_by_model = {}
+    metrics_by_model = {}
+
+    for model_name in adjusted_forecasts.columns:
+        adjusted_forecast = apply_variance_floor(
+            adjusted_forecasts[model_name],
+            floor=floor,
+        )
+
+        adjusted_forecasts[model_name] = adjusted_forecast
+
+        qlike = qlike_loss(actual, adjusted_forecast)
+        mse = mse_loss(actual, adjusted_forecast)
+        mae = mae_loss(actual, adjusted_forecast)
+
+        qlike_by_model[model_name] = qlike
+
+        metrics_by_model[model_name] = {
+            "QLIKE": qlike.mean(),
+            "MSE": mse.mean(),
+            "MAE": mae.mean(),
+        }
+
+    metrics = pd.DataFrame.from_dict(
+        metrics_by_model,
+        orient="index",
+    )
+
+    qlike_losses = pd.DataFrame(
+        qlike_by_model,
+        index=actual.index,
+    )
+
+    return metrics, qlike_losses, adjusted_forecasts
