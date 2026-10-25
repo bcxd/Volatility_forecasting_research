@@ -1,5 +1,9 @@
 Research Plan: One-Day-Ahead BTCUSDT Variance Forecasting
 
+Protocol status
+
+The 2025 test-period metrics were inspected during software development before the statistical-comparison and artifact layers were completed. Therefore, results from the current 2025 test period are classified as exploratory/development results rather than untouched confirmatory evidence. See docs/amendments.md for the dated record and the requirements for a future confirmatory study.
+
 1. Motivation
 
 Observation from prior research
@@ -82,7 +86,7 @@ Validation: 2024-01-01 to before 2025-01-01.
 
 Test: 2025-01-01 to before 2026-01-01.
 
-The return series will start on 2019-01-02 if the dataset contains no preceding 2018 close. The validation period is used to select EWMA decay. The test period is reserved for the final evaluation and is not used to select models or settings.
+The return series will start on 2019-01-02 if the dataset contains no preceding 2018 close. The validation period is used to select EWMA decay. Under the original protocol, the test period was reserved for final evaluation and was not to be used to select models or settings. Because its aggregate metrics have since been inspected during development, the current 2025 evaluation is exploratory as recorded in docs/amendments.md.
 
 5. Benchmarks and Candidate Models
 
@@ -180,7 +184,7 @@ The EWMA decay is selected by the lowest mean validation QLIKE across these four
 
 GARCH(1,1) order, distribution, optimizer, constraints, and initialization are fixed in advance. GARCH parameters are re-estimated as specified in the walk-forward protocol; the test period is not used to choose these settings.
 
-After validation selection, the chosen EWMA decay and the core GARCH specification are frozen for test evaluation. Validation results may be used for model selection as defined here; test results may not.
+After validation selection, the chosen EWMA decay and the core GARCH specification are frozen for the reported 2025 evaluation. No settings may be changed in response to those results and then presented as pre-specified. The existing test exposure is documented in docs/amendments.md.
 
 8. Forecast Evaluation
 
@@ -202,7 +206,26 @@ MSE between squared-return proxy and forecast variance.
 
 MAE between squared-return proxy and forecast variance.
 
-Lower loss indicates better performance. Results will include average loss, pairwise loss differences, and relative loss improvement. Volatility forecasts may be reported as $\sqrt{\hat h_t}$, but all primary evaluation is on the variance scale.
+Lower loss indicates better performance. Results will include each model's mean loss and pairwise mean loss differences.
+
+For QLIKE, the reported effect size for models A and B is
+
+$$
+\Delta_{A,B}^{\mathrm{QLIKE}}
+=\overline{L}_{A}-\overline{L}_{B},
+$$
+
+where a negative value favors model A. A relative percentage improvement will not be reported for QLIKE because additive normalizations of the loss can change the mean and its percentage denominator without changing model rankings, loss differences, or the Diebold-Mariano test.
+
+For MSE and MAE, relative improvement over a benchmark may be reported as
+
+$$
+100\times
+\frac{L_{\mathrm{benchmark}}-L_{\mathrm{model}}}
+{L_{\mathrm{benchmark}}},
+$$
+
+provided the benchmark mean loss is strictly positive. Volatility forecasts may be reported as $\sqrt{\hat h_t}$, but all primary evaluation is on the variance scale.
 
 9. Statistical Comparison
 
@@ -220,7 +243,15 @@ EWMA versus expanding historical variance.
 
 For each pair, the loss differential is the first model’s daily QLIKE minus the second model’s daily QLIKE. A negative average differential favors the first model.
 
-Forecast accuracy is compared using a two-sided Diebold–Mariano test of equal expected loss. The variance of the daily loss differential will use a Bartlett-kernel Newey–West HAC estimator with a pre-specified automatic bandwidth rule. The implementation and package version will be recorded before final test evaluation; bandwidths will not be chosen by inspecting test p-values.
+Forecast accuracy is compared using a two-sided asymptotic Diebold–Mariano test of equal expected loss. For a comparison written as A versus B, the daily loss differential is $d_t=L_{A,t}-L_{B,t}$, so a negative mean differential favors A.
+
+The long-run variance of the daily loss differential will use a Bartlett-kernel Newey–West HAC estimator. For $T$ valid paired observations, the bandwidth is fixed as
+
+$$
+L=\left\lfloor4(T/100)^{2/9}\right\rfloor,
+$$
+
+with Bartlett weight $w_k=1-k/(L+1)$. No Harvey–Leybourne–Newbold small-sample correction will be applied. Each result will record the comparison order, number of paired observations, bandwidth, mean loss differential, test statistic, and two-sided normal-reference p-value. Missing or non-finite paired losses cause the run to stop rather than being silently removed.
 
 Holm adjustment is applied across the five pre-specified comparisons at a family-wise significance level of 5%. Statistical significance will be reported separately from the size of the loss difference and any practical interpretation. See Diebold and Mariano (1995).
 
@@ -256,9 +287,11 @@ Regime comparisons require a regime definition that does not use future informat
 
 11. Amendments, Reproducibility, and Data-Snooping Control
 
-The core protocol will be saved and versioned before test results are examined. Any amendment will record its date, reason, affected hypotheses, and whether test results had already been inspected.
+A future confirmatory protocol will be saved and versioned before its new holdout results are examined. For the current study, any amendment will record its date, reason, affected hypotheses, and whether the 2025 results had already been inspected.
 
 If a change is made after examining test results, the resulting analysis will be labeled exploratory and will not be presented as a confirmatory test of the original protocol. Confirmatory claims for a materially expanded model set or a changed target require a new untouched holdout period or another design that separates model selection from final evaluation.
+
+Data acquisition is a separate, explicit step. A normal experiment run reads a named immutable raw snapshot and does not download or overwrite market data. Every snapshot record will include the API endpoint, symbol, interval, requested start and end, UTC retrieval timestamp, first and last returned candle, row count, filename, and SHA-256 checksum.
 
 The project will retain the raw data snapshot, forecast output by date and model, selected validation settings, optimizer status and messages, metric calculations, statistical test output, code commit, and package versions. Forecasts with missing or non-positive values will be reported according to the pre-specified failure policy rather than silently removed.
 
@@ -273,3 +306,7 @@ Diebold, F. X., & Mariano, R. S. (1995). “Comparing Predictive Accuracy.” Jo
 Patton, A. J. (2011). “Volatility Forecast Comparison Using Imperfect Volatility Proxies.” Journal of Econometrics, 160(1), 246–256. https://doi.org/10.1016/j.jeconom.2010.03.034
 
 White, H. (2000). “A Reality Check for Data Snooping.” Econometrica, 68(5), 1097–1126. https://doi.org/10.1111/1468-0262.00152
+
+statsmodels developers. “Heteroscedasticity and Autocorrelation Robust Covariance Matrix (cov_hac).” https://www.statsmodels.org/stable/generated/statsmodels.stats.sandwich_covariance.cov_hac.html
+
+statsmodels developers. “Multiple Tests and p-Value Correction (multipletests).” https://www.statsmodels.org/stable/generated/statsmodels.stats.multitest.multipletests.html
