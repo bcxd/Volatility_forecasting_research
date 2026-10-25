@@ -6,12 +6,7 @@ from src.features import calculate_log_returns, variance_proxy
 from src.splits import split_data
 from src.benchmarks import persistence_var, historical_var
 from src.models import calculate_ewma, walk_forward_garch
-from src.evaluation import (
-    apply_variance_floor,
-    qlike_loss,
-    mse_loss,
-    mae_loss,
-)
+from src.evaluation import evaluate_forecasts
 
 
 SYMBOL = "BTCUSDT"
@@ -116,29 +111,24 @@ def main():
         refit_every=GARCH_REFIT_EVERY,
     )
 
-    validation_metrics = {}
-    actual = val_df["variance_proxy"]
-    for column_name in validation_forecasts.columns:
-        forecast = apply_variance_floor(
-            validation_forecasts[column_name],
-            floor=VARIANCE_FLOOR,
-        )
+    actual_validation = val_df["variance_proxy"]
 
-        validation_metrics[column_name] = {
-            "QLIKE": qlike_loss(actual, forecast).mean(),
-            "MSE": mse_loss(actual, forecast).mean(),
-            "MAE": mae_loss(actual, forecast).mean(),
-        }
+    (
+        validation_results,
+        validation_qlike_losses,
+        validation_forecasts,
+    ) = evaluate_forecasts(
+        actual=actual_validation,
+        forecasts=validation_forecasts,
+        floor=VARIANCE_FLOOR,
+    )
 
     best_name = min(
         ewma_candidate_lambdas,
-        key=lambda name: validation_metrics[name]["QLIKE"],
+        key=lambda name: validation_results.loc[name, "QLIKE"],
     )
     best_lambda = ewma_candidate_lambdas[best_name]
-    validation_results = pd.DataFrame.from_dict(
-        validation_metrics,
-        orient="index",
-    )
+
     print("\nValidation metrics:")
     print(validation_results)
     print(f"\nSelected EWMA lambda: {best_lambda:.2f}")
@@ -175,24 +165,16 @@ def main():
 
     actual_test = test_df["variance_proxy"].reindex(test_forecasts.index)
 
-    for model_name in test_forecasts.columns:
-        test_forecasts[model_name] = apply_variance_floor(
-            test_forecasts[model_name],
-            floor=VARIANCE_FLOOR,
-        )
+    (
+        test_results,
+        test_qlike_losses,
+        test_forecasts,
+    ) = evaluate_forecasts(
+        actual=actual_test,
+        forecasts=test_forecasts,
+        floor=VARIANCE_FLOOR,
+    )
 
-    test_metrics = {}
-
-    for model_name in test_forecasts.columns:
-        forecast = test_forecasts[model_name]
-
-        test_metrics[model_name] = {
-            "QLIKE": qlike_loss(actual_test, forecast).mean(),
-            "MSE": mse_loss(actual_test, forecast).mean(),
-            "MAE": mae_loss(actual_test, forecast).mean(),
-        }
-
-    test_results = pd.DataFrame.from_dict(test_metrics, orient="index")
     print("\nTest metrics:")
     print(test_results)
 
