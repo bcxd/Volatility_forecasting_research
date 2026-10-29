@@ -1,6 +1,9 @@
+import argparse
+from pathlib import Path
+
 import pandas as pd
 
-from src.data_fetch import data_fetch, save_raw_data
+from src.data_io import load_raw_snapshot
 from src.data_validation import data_validation, save_processed_data
 from src.features import calculate_log_returns, variance_proxy
 from src.splits import split_data
@@ -36,21 +39,49 @@ GARCH_CONSTRAINTS = (
 GARCH_REFIT_EVERY = 7
 
 
-def main():
-    raw_data = data_fetch(
-        symbol=SYMBOL,
-        interval=INTERVAL,
-        start=START_DATE,
-        end=END_DATE,
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run the forecasting experiment from a raw snapshot."
+        )
     )
-    raw_path = save_raw_data(
-        raw_data=raw_data,
-        symbol=SYMBOL,
-        interval=INTERVAL,
-        start=START_DATE,
-        end=END_DATE,
+    parser.add_argument(
+        "--raw-path",
+        type=Path,
+        required=True,
+        help=(
+            "Path to a raw JSON snapshot with adjacent metadata."
+        ),
     )
-    print(f"Raw data saved to: {raw_path}")
+
+    return parser
+
+
+def validate_snapshot_for_experiment(metadata):
+    expected_metadata = {
+        "symbol": SYMBOL,
+        "interval": INTERVAL,
+        "requested_start": START_DATE,
+        "requested_end_exclusive": END_DATE,
+    }
+
+    for field, expected_value in expected_metadata.items():
+        actual_value = metadata.get(field)
+
+        if actual_value != expected_value:
+            raise ValueError(
+                f"Snapshot metadata mismatch for {field}: "
+                f"expected {expected_value!r}, "
+                f"got {actual_value!r}"
+            )
+
+
+def main(raw_path):
+    raw_data, metadata = load_raw_snapshot(raw_path)
+    validate_snapshot_for_experiment(metadata)
+
+    print(f"Raw snapshot loaded from: {raw_path}")
+
     processed_data = data_validation(
         raw_data,
         start=START_DATE,
@@ -188,4 +219,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    arguments = build_parser().parse_args()
+    main(arguments.raw_path)

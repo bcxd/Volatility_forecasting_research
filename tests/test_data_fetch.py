@@ -1,36 +1,9 @@
-import json
 from unittest.mock import Mock
 
 import pandas as pd
 
 import src.data_fetch as data_fetch_module
-from src.data_fetch import data_fetch, save_raw_data
-
-
-def test_save_raw_data_writes_expected_json(tmp_path):
-    raw_data = [
-        [1, "100.0", "110.0"],
-        [2, "110.0", "120.0"],
-    ]
-
-    saved_path = save_raw_data(
-        raw_data=raw_data,
-        symbol="BTCUSDT",
-        interval="1d",
-        start="2019-01-01",
-        end="2026-01-01",
-        output_dir=tmp_path,
-    )
-
-    expected_path = tmp_path / "btcusdt_1d_2019-01-01_2026-01-01.json"
-
-    assert saved_path == expected_path
-    assert saved_path.exists()
-
-    with saved_path.open("r", encoding="utf-8") as file:
-        saved_data = json.load(file)
-
-    assert saved_data == raw_data
+from src.data_fetch import data_fetch
 
 
 def test_data_fetch_returns_single_batch(monkeypatch):
@@ -66,17 +39,23 @@ def test_data_fetch_returns_single_batch(monkeypatch):
 
 
 def test_data_fetch_combines_multiple_batches(monkeypatch):
-    day_ms = 86_400_000
+    hour_ms = 3_600_000
     start_ms = int(
         pd.Timestamp("2024-01-01", tz="UTC").timestamp() * 1000
     )
 
     first_batch = [
-        [start_ms, "day-1"],
-        [start_ms + day_ms, "day-2"],
+        [
+            start_ms + index * hour_ms,
+            f"hour-{index + 1}",
+        ]
+        for index in range(1000)
     ]
     second_batch = [
-        [start_ms + 2 * day_ms, "day-3"],
+        [
+            start_ms + 1000 * hour_ms,
+            "hour-1001",
+        ],
     ]
 
     first_response = Mock()
@@ -97,9 +76,9 @@ def test_data_fetch_combines_multiple_batches(monkeypatch):
 
     result = data_fetch(
         symbol="BTCUSDT",
-        interval="1d",
+        interval="1h",
         start="2024-01-01",
-        end="2024-01-04",
+        end="2024-02-12",
     )
 
     assert result == first_batch + second_batch
@@ -108,7 +87,9 @@ def test_data_fetch_combines_multiple_batches(monkeypatch):
     second_request = get_mock.call_args_list[1]
     second_start = second_request.kwargs["params"]["startTime"]
 
-    assert second_start == start_ms + 2 * day_ms
+    assert second_start == (
+        start_ms + 999 * hour_ms + 1
+    )
 
 
 def test_data_fetch_stops_when_batch_is_empty(monkeypatch):
