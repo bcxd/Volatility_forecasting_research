@@ -6,6 +6,7 @@ import pytest
 
 import src.models as models
 from src.models import (
+    build_garch_constraints,
     calculate_ewma,
     calculate_garch_variance,
     forecast_garch,
@@ -282,3 +283,45 @@ def test_walk_forward_garch_refits_on_schedule(monkeypatch):
     )
 
     assert fit_history_lengths == [2, 9]
+
+
+def test_build_garch_constraints_enforces_persistence_margin():
+    margin = 1e-8
+
+    constraints = build_garch_constraints(
+        persistence_margin=margin,
+    )
+
+    assert len(constraints) == 1
+
+    constraint = constraints[0]
+
+    assert constraint["type"] == "ineq"
+
+    valid_params = np.array([0.1, 0.2, 0.7])
+    invalid_params = np.array([0.1, 0.6, 0.5])
+
+    assert constraint["fun"](valid_params) > 0
+    assert constraint["fun"](invalid_params) < 0
+
+
+@pytest.mark.parametrize(
+    "invalid_margin",
+    [
+        0.0,
+        -1e-8,
+        1.0,
+        np.inf,
+        np.nan,
+    ],
+)
+def test_build_garch_constraints_rejects_invalid_margin(
+    invalid_margin,
+):
+    with pytest.raises(
+        ValueError,
+        match="persistence_margin",
+    ):
+        build_garch_constraints(
+            persistence_margin=invalid_margin,
+        )

@@ -248,3 +248,29 @@ def walk_forward_garch(
         index=forecast_dates,
         name="garch_variance",
     )
+
+
+def build_garch_constraints(persistence_margin):
+    if (
+        not np.isfinite(persistence_margin)
+        or not 0 < persistence_margin < 1
+    ):
+        raise ValueError(
+            "persistence_margin must be finite and satisfy "
+            "0 < persistence_margin < 1"
+        )
+
+    def persistence_constraint(params):
+        return (
+            1.0
+            - params[1]
+            - params[2]
+            - persistence_margin
+        )
+
+    return (
+        {
+            "type": "ineq",
+            "fun": persistence_constraint,
+        },
+    )
