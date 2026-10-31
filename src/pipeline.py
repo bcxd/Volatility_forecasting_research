@@ -85,6 +85,134 @@ def prepare_data(
     )
 
 
+def generate_validation_forecasts(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    config: ExperimentConfig,
+    garch_constraints,
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    train_val_df = pd.concat(
+        [train_df, val_df]
+    ).sort_index()
+
+    forecasts = {}
+
+    forecasts["persistence"] = persistence_var(
+        train_val_df
+    ).loc[
+        val_df.index,
+        "persistence_var",
+    ]
+
+    forecasts["historical_variance"] = historical_var(
+        train_val_df
+    ).loc[
+        val_df.index,
+        "historical_var",
+    ]
+
+    candidate_lambdas = {}
+
+    for lambda_ in config.ewma_lambdas:
+        column_name = f"ewma_lambda_{lambda_:.2f}"
+
+        forecasts[column_name] = calculate_ewma(
+            forecast_df=val_df,
+            train_df=train_df,
+            lamda_=lambda_,
+        )
+
+        candidate_lambdas[column_name] = lambda_
+
+    forecasts = pd.DataFrame(
+        forecasts,
+        index=val_df.index,
+    )
+
+    forecasts["garch_1_1"] = walk_forward_garch(
+        df=train_val_df,
+        forecast_dates=val_df.index,
+        method=config.garch_method,
+        bounds=config.garch_bounds,
+        constraints=garch_constraints,
+        refit_every=config.garch_refit_every,
+    )
+
+    return forecasts, candidate_lambdas
+
+
+def select_best_ewma(
+    validation_results: pd.DataFrame,
+    candidate_lambdas: dict[str, float],
+) -> tuple[str, float]:
+    best_name = min(
+        candidate_lambdas,
+        key=lambda name: validation_results.loc[
+            name,
+            "QLIKE",
+        ],
+    )
+
+    best_lambda = candidate_lambdas[best_name]
+
+    return best_name, best_lambda
+
+
+def generate_test_forecasts(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    best_lambda: float,
+    config: ExperimentConfig,
+    garch_constraints,
+) -> pd.DataFrame:
+    all_df = pd.concat(
+        [train_df, val_df, test_df]
+    ).sort_index()
+
+    validation_and_test_df = pd.concat(
+        [val_df, test_df]
+    ).sort_index()
+
+    ewma_after_train = calculate_ewma(
+        forecast_df=validation_and_test_df,
+        train_df=train_df,
+        lamda_=best_lambda,
+    )
+
+    persistence_all = persistence_var(all_df)
+    historical_all = historical_var(all_df)
+
+    garch_test = walk_forward_garch(
+        df=all_df,
+        forecast_dates=test_df.index,
+        method=config.garch_method,
+        bounds=config.garch_bounds,
+        constraints=garch_constraints,
+        refit_every=config.garch_refit_every,
+    )
+
+    forecasts = pd.DataFrame(index=test_df.index)
+
+    forecasts["persistence"] = persistence_all.loc[
+        test_df.index,
+        "persistence_var",
+    ]
+
+    forecasts["historical_variance"] = historical_all.loc[
+        test_df.index,
+        "historical_var",
+    ]
+
+    forecasts[
+        f"ewma_lambda_{best_lambda:.2f}"
+    ] = ewma_after_train.loc[test_df.index]
+
+    forecasts["garch_1_1"] = garch_test
+
+    return forecasts
+
+
 def main(config: ExperimentConfig):
     garch_constraints = build_garch_constraints(
         persistence_margin=(
@@ -125,38 +253,14 @@ def main(config: ExperimentConfig):
         config,
     )
 
-    validation_forecasts = {}
-    train_val_df = pd.concat([train_df, val_df]).sort_index()
-    validation_forecasts["persistence"] = persistence_var(train_val_df).loc[
-        val_df.index, "persistence_var"
-    ]
-    validation_forecasts["historical_variance"] = historical_var(train_val_df).loc[
-        val_df.index, "historical_var"
-    ]
-    ewma_candidate_lambdas = {}
-    for lambda_ in config.ewma_lambdas:
-        column_name = f"ewma_lambda_{lambda_:.2f}"
-
-        validation_forecasts[column_name] = calculate_ewma(
-            forecast_df=val_df,
-            train_df=train_df,
-            lamda_=lambda_,
-        )
-
-        ewma_candidate_lambdas[column_name] = lambda_
-
-    validation_forecasts = pd.DataFrame(
+    (
         validation_forecasts,
-        index=val_df.index,
-    )
-
-    validation_forecasts["garch_1_1"] = walk_forward_garch(
-        df=train_val_df,
-        forecast_dates=val_df.index,
-        method=config.garch_method,
-        bounds=config.garch_bounds,
-        constraints=garch_constraints,
-        refit_every=config.garch_refit_every,
+        ewma_candidate_lambdas,
+    ) = generate_validation_forecasts(
+        train_df,
+        val_df,
+        config,
+        garch_constraints,
     )
 
     actual_validation = val_df["variance_proxy"]
@@ -171,45 +275,23 @@ def main(config: ExperimentConfig):
         floor=config.variance_floor,
     )
 
-    best_name = min(
+    best_name, best_lambda = select_best_ewma(
+        validation_results,
         ewma_candidate_lambdas,
-        key=lambda name: validation_results.loc[name, "QLIKE"],
     )
-    best_lambda = ewma_candidate_lambdas[best_name]
 
     print("\nValidation metrics:")
     print(validation_results)
     print(f"\nSelected EWMA lambda: {best_lambda:.2f}")
 
-    all_df = pd.concat([train_df, val_df, test_df]).sort_index()
-
-    ewma_after_train = calculate_ewma(
-        forecast_df=pd.concat([val_df, test_df]),
-        train_df=train_df,
-        lamda_=best_lambda,
+    test_forecasts = generate_test_forecasts(
+        train_df,
+        val_df,
+        test_df,
+        best_lambda=best_lambda,
+        config=config,
+        garch_constraints=garch_constraints,
     )
-
-    ewma_test = ewma_after_train.loc[test_df.index]
-    persistence_all = persistence_var(all_df)
-    historical_all = historical_var(all_df)
-    garch_test = walk_forward_garch(
-        df=all_df,
-        forecast_dates=test_df.index,
-        method=config.garch_method,
-        bounds=config.garch_bounds,
-        constraints=garch_constraints,
-        refit_every=config.garch_refit_every,
-    )
-
-    test_forecasts = pd.DataFrame(index=test_df.index)
-    test_forecasts["persistence"] = persistence_all.loc[
-        test_df.index, "persistence_var"
-    ]
-    test_forecasts["historical_variance"] = historical_all.loc[
-        test_df.index, "historical_var"
-    ]
-    test_forecasts[f"ewma_lambda_{best_lambda:.2f}"] = ewma_test
-    test_forecasts["garch_1_1"] = garch_test
 
     actual_test = test_df["variance_proxy"].reindex(test_forecasts.index)
 

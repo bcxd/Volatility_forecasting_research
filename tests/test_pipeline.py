@@ -180,3 +180,241 @@ def test_prepare_data_creates_features_and_splits(
 
     assert "log_return" not in processed_data.columns
     assert "variance_proxy" not in processed_data.columns
+
+
+def test_generate_validation_forecasts_builds_candidates(
+    monkeypatch,
+    tmp_path,
+):
+    train_dates = pd.date_range(
+        "2024-01-01",
+        periods=2,
+        freq="D",
+        tz="UTC",
+    )
+    val_dates = pd.date_range(
+        "2024-01-03",
+        periods=2,
+        freq="D",
+        tz="UTC",
+    )
+
+    train_df = pd.DataFrame(
+        {
+            "log_return": [0.1, 0.2],
+            "variance_proxy": [1.0, 4.0],
+        },
+        index=train_dates,
+    )
+    val_df = pd.DataFrame(
+        {
+            "log_return": [0.3, 0.4],
+            "variance_proxy": [9.0, 16.0],
+        },
+        index=val_dates,
+    )
+
+    config = ExperimentConfig(
+        raw_path=tmp_path / "snapshot.json",
+        ewma_lambdas=(0.50, 0.90),
+    )
+    constraints = ("constraint",)
+
+    garch_result = pd.Series(
+        [2.0, 3.0],
+        index=val_dates,
+        name="garch_variance",
+    )
+    garch_mock = Mock(return_value=garch_result)
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "walk_forward_garch",
+        garch_mock,
+    )
+
+    (
+        forecasts,
+        candidate_lambdas,
+    ) = pipeline_module.generate_validation_forecasts(
+        train_df,
+        val_df,
+        config,
+        constraints,
+    )
+
+    assert forecasts.index.equals(val_dates)
+    assert forecasts.columns.tolist() == [
+        "persistence",
+        "historical_variance",
+        "ewma_lambda_0.50",
+        "ewma_lambda_0.90",
+        "garch_1_1",
+    ]
+
+    assert candidate_lambdas == {
+        "ewma_lambda_0.50": 0.50,
+        "ewma_lambda_0.90": 0.90,
+    }
+
+    pd.testing.assert_series_equal(
+        forecasts["garch_1_1"],
+        garch_result.rename("garch_1_1"),
+    )
+
+    call_arguments = garch_mock.call_args.kwargs
+
+    assert call_arguments["forecast_dates"].equals(
+        val_dates
+    )
+    assert call_arguments["method"] == config.garch_method
+    assert call_arguments["bounds"] == config.garch_bounds
+    assert call_arguments["constraints"] is constraints
+    assert (
+        call_arguments["refit_every"]
+        == config.garch_refit_every
+    )
+
+
+def test_select_best_ewma_uses_lowest_candidate_qlike():
+    validation_results = pd.DataFrame(
+        {
+            "QLIKE": {
+                "persistence": -10.0,
+                "ewma_lambda_0.90": -6.0,
+                "ewma_lambda_0.94": -7.0,
+            },
+        }
+    )
+
+    candidate_lambdas = {
+        "ewma_lambda_0.90": 0.90,
+        "ewma_lambda_0.94": 0.94,
+    }
+
+    best_name, best_lambda = (
+        pipeline_module.select_best_ewma(
+            validation_results,
+            candidate_lambdas,
+        )
+    )
+
+    assert best_name == "ewma_lambda_0.94"
+    assert best_lambda == 0.94
+
+
+def test_generate_test_forecasts_uses_validation_history(
+    monkeypatch,
+    tmp_path,
+):
+    train_dates = pd.date_range(
+        "2024-01-01",
+        periods=2,
+        freq="D",
+        tz="UTC",
+    )
+    val_dates = pd.date_range(
+        "2024-01-03",
+        periods=1,
+        freq="D",
+        tz="UTC",
+    )
+    test_dates = pd.date_range(
+        "2024-01-04",
+        periods=2,
+        freq="D",
+        tz="UTC",
+    )
+
+    train_df = pd.DataFrame(
+        {
+            "log_return": [0.1, 0.2],
+            "variance_proxy": [1.0, 4.0],
+        },
+        index=train_dates,
+    )
+    val_df = pd.DataFrame(
+        {
+            "log_return": [0.3],
+            "variance_proxy": [9.0],
+        },
+        index=val_dates,
+    )
+    test_df = pd.DataFrame(
+        {
+            "log_return": [0.4, 0.5],
+            "variance_proxy": [16.0, 25.0],
+        },
+        index=test_dates,
+    )
+
+    config = ExperimentConfig(
+        raw_path=tmp_path / "snapshot.json",
+    )
+    constraints = ("constraint",)
+
+    ewma_dates = val_dates.append(test_dates)
+    ewma_result = pd.Series(
+        [10.0, 11.0, 12.0],
+        index=ewma_dates,
+    )
+    garch_result = pd.Series(
+        [20.0, 21.0],
+        index=test_dates,
+    )
+
+    ewma_mock = Mock(return_value=ewma_result)
+    garch_mock = Mock(return_value=garch_result)
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "calculate_ewma",
+        ewma_mock,
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "walk_forward_garch",
+        garch_mock,
+    )
+
+    forecasts = pipeline_module.generate_test_forecasts(
+        train_df,
+        val_df,
+        test_df,
+        best_lambda=0.94,
+        config=config,
+        garch_constraints=constraints,
+    )
+
+    assert forecasts.index.equals(test_dates)
+    assert forecasts.columns.tolist() == [
+        "persistence",
+        "historical_variance",
+        "ewma_lambda_0.94",
+        "garch_1_1",
+    ]
+
+    pd.testing.assert_series_equal(
+        forecasts["ewma_lambda_0.94"],
+        ewma_result.loc[test_dates].rename(
+            "ewma_lambda_0.94"
+        ),
+    )
+
+    ewma_arguments = ewma_mock.call_args.kwargs
+
+    assert ewma_arguments["forecast_df"].index.equals(
+        ewma_dates
+    )
+    assert ewma_arguments["train_df"] is train_df
+    assert ewma_arguments["lamda_"] == 0.94
+
+    garch_arguments = garch_mock.call_args.kwargs
+
+    assert garch_arguments["df"].index.equals(
+        train_dates.append(val_dates).append(test_dates)
+    )
+    assert garch_arguments["forecast_dates"].equals(
+        test_dates
+    )
+    assert garch_arguments["constraints"] is constraints
