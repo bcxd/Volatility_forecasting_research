@@ -308,14 +308,6 @@ def main(config: ExperimentConfig):
     print("\nTest metrics:")
     print(test_results)
 
-    plot_df = test_forecasts.copy()
-    plot_df["actual_proxy"] = actual_test.mask(actual_test <= 0)
-
-    ax = plot_df.plot(figsize=(12, 5), logy=True)
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Variance")
-    ax.set_title("Test-period variance forecasts")
-
 
 if __name__ == "__main__":
     arguments = build_parser().parse_args()
