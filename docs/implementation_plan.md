@@ -69,9 +69,11 @@ Each experiment writes to a new directory rather than overwriting an earlier run
 ~~~text
 results/runs/<timestamp>_<short_commit>/
 |-- metadata.json
+|-- validation_targets.csv
 |-- validation_forecasts.csv
 |-- validation_losses.csv
 |-- validation_metrics.csv
+|-- test_targets.csv
 |-- test_forecasts.csv
 |-- test_losses.csv
 |-- test_metrics.csv

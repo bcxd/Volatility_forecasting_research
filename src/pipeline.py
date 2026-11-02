@@ -333,7 +333,17 @@ def main(
         garch_constraints,
     )
 
-    actual_validation = val_df["variance_proxy"]
+    validation_targets = val_df.loc[
+        validation_forecasts.index,
+        [
+            "log_return",
+            "variance_proxy",
+        ],
+    ].copy()
+
+    actual_validation = (
+        validation_targets["variance_proxy"]
+    )
 
     (
         validation_results,
@@ -366,7 +376,15 @@ def main(
         garch_constraints=garch_constraints,
     )
 
-    actual_test = test_df["variance_proxy"].reindex(test_forecasts.index)
+    test_targets = test_df.loc[
+        test_forecasts.index,
+        [
+            "log_return",
+            "variance_proxy",
+        ],
+    ].copy()
+
+    actual_test = test_targets["variance_proxy"]
 
     (
         test_results,
@@ -393,6 +411,7 @@ def main(
         snapshot_metadata=metadata,
         selected_ewma_name=best_name,
         selected_ewma_lambda=best_lambda,
+        validation_targets=validation_targets,
         validation_forecasts=(
             validation_forecasts
         ),
@@ -400,6 +419,7 @@ def main(
             validation_daily_losses
         ),
         validation_metrics=validation_results,
+        test_targets=test_targets,
         test_forecasts=test_forecasts,
         test_losses=test_daily_losses,
         test_metrics=test_results,

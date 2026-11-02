@@ -530,12 +530,14 @@ def test_pipeline_main_persists_complete_run_bundle(
     )
     validation_df = pd.DataFrame(
         {
+            "log_return": [0.3],
             "variance_proxy": [3.0],
         },
         index=validation_dates,
     )
     test_df = pd.DataFrame(
         {
+            "log_return": [0.4],
             "variance_proxy": [4.0],
         },
         index=test_dates,
@@ -731,6 +733,22 @@ def test_pipeline_main_persists_complete_run_bundle(
         call_arguments["selected_ewma_lambda"]
         == 0.94
     )
+
+    expected_validation_targets = (
+        validation_df.loc[
+            validation_forecasts.index,
+            [
+                "log_return",
+                "variance_proxy",
+            ],
+        ]
+    )
+
+    pd.testing.assert_frame_equal(
+        call_arguments["validation_targets"],
+        expected_validation_targets,
+    )
+
     assert (
         call_arguments["validation_forecasts"]
         is validation_forecasts
@@ -743,6 +761,21 @@ def test_pipeline_main_persists_complete_run_bundle(
         call_arguments["validation_metrics"]
         is validation_metrics
     )
+    expected_test_targets = (
+        test_df.loc[
+            test_forecasts.index,
+            [
+                "log_return",
+                "variance_proxy",
+            ],
+        ]
+    )
+
+    pd.testing.assert_frame_equal(
+        call_arguments["test_targets"],
+        expected_test_targets,
+    )
+
     assert (
         call_arguments["test_forecasts"]
         is test_forecasts

@@ -217,9 +217,11 @@ def save_run_artifacts(
     run_directory: Path,
     *,
     metadata: Mapping[str, Any],
+    validation_targets: pd.DataFrame,
     validation_forecasts: pd.DataFrame,
     validation_losses: pd.DataFrame,
     validation_metrics: pd.DataFrame,
+    test_targets: pd.DataFrame,
     test_forecasts: pd.DataFrame,
     test_losses: pd.DataFrame,
     test_metrics: pd.DataFrame,
@@ -227,9 +229,11 @@ def save_run_artifacts(
 ) -> dict[str, Path]:
     """Persist the standard forecast, loss, metric, and metadata bundle."""
     dataframes = {
+        "validation_targets": validation_targets,
         "validation_forecasts": validation_forecasts,
         "validation_losses": validation_losses,
         "validation_metrics": validation_metrics,
+        "test_targets": test_targets,
         "test_forecasts": test_forecasts,
         "test_losses": test_losses,
         "test_metrics": test_metrics,
@@ -317,9 +321,11 @@ def create_run_bundle(
     snapshot_metadata: Mapping[str, Any],
     selected_ewma_name: str,
     selected_ewma_lambda: float,
+    validation_targets: pd.DataFrame,
     validation_forecasts: pd.DataFrame,
     validation_losses: pd.DataFrame,
     validation_metrics: pd.DataFrame,
+    test_targets: pd.DataFrame,
     test_forecasts: pd.DataFrame,
     test_losses: pd.DataFrame,
     test_metrics: pd.DataFrame,
@@ -378,11 +384,13 @@ def create_run_bundle(
     save_run_artifacts(
         incomplete_directory,
         metadata=metadata,
+        validation_targets=validation_targets,
         validation_forecasts=(
             validation_forecasts
         ),
         validation_losses=validation_losses,
         validation_metrics=validation_metrics,
+        test_targets=test_targets,
         test_forecasts=test_forecasts,
         test_losses=test_losses,
         test_metrics=test_metrics,

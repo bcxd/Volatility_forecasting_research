@@ -29,7 +29,8 @@ python -m src.pipeline --raw-path data/raw/btcusdt_1d_2019-01-01_2026-01-01.json
 
 The pipeline validates the data, writes a processed CSV under
 `data/processed/`, selects the EWMA decay on the validation period, and
-prints validation and test metrics.
+prints validation and test metrics. It also writes a versioned result bundle
+under `results/runs/`.
 
 ## Data snapshots
 
@@ -72,5 +73,5 @@ The 2025 test-period metrics were inspected during development, so current
 2025 findings are exploratory rather than untouched confirmatory evidence.
 See [protocol amendments](docs/amendments.md).
 
-Statistical comparison and versioned result bundles have not been implemented
+Statistical comparison and artifact-based reporting have not been implemented
 yet.

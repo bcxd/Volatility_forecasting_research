@@ -209,9 +209,21 @@ def test_save_run_artifacts_writes_standard_files(
             name="id",
         ),
     )
+
     metadata = {
         "run_id": "20261031T123456Z_abcdef1",
     }
+
+    targets = pd.DataFrame(
+        {
+            "log_return": [0.1],
+            "variance_proxy": [0.01],
+        },
+        index=pd.Index(
+            ["2025-01-01"],
+            name="date",
+        ),
+    )
 
     saved_paths = save_run_artifacts(
         run_directory,
@@ -223,6 +235,8 @@ def test_save_run_artifacts_writes_standard_files(
         test_losses=dataframe,
         test_metrics=dataframe,
         garch_refit_log=dataframe,
+        validation_targets=targets,
+        test_targets=targets,
     )
 
     assert set(saved_paths) == {
@@ -234,6 +248,8 @@ def test_save_run_artifacts_writes_standard_files(
         "test_losses",
         "test_metrics",
         "garch_refit_log",
+        "validation_targets",
+        "test_targets",
     }
 
     assert {
@@ -248,6 +264,8 @@ def test_save_run_artifacts_writes_standard_files(
         "test_losses.csv",
         "test_metrics.csv",
         "garch_refit_log.csv",
+        "validation_targets.csv",
+        "test_targets.csv",
     }
 
     assert all(
@@ -533,9 +551,11 @@ def test_create_run_bundle_writes_versioned_artifacts(
         },
         selected_ewma_name="ewma_lambda_0.94",
         selected_ewma_lambda=0.94,
+        validation_targets=dataframe,
         validation_forecasts=dataframe,
         validation_losses=dataframe,
         validation_metrics=dataframe,
+        test_targets=dataframe,
         test_forecasts=dataframe,
         test_losses=dataframe,
         test_metrics=dataframe,
@@ -556,9 +576,11 @@ def test_create_run_bundle_writes_versioned_artifacts(
         for path in run_directory.iterdir()
     } == {
         "metadata.json",
+        "validation_targets.csv",
         "validation_forecasts.csv",
         "validation_losses.csv",
         "validation_metrics.csv",
+        "test_targets.csv",
         "test_forecasts.csv",
         "test_losses.csv",
         "test_metrics.csv",
@@ -650,9 +672,11 @@ def test_create_run_bundle_does_not_publish_partial_run(
                 "ewma_lambda_0.94"
             ),
             selected_ewma_lambda=0.94,
+            validation_targets=dataframe,
             validation_forecasts=dataframe,
             validation_losses=dataframe,
             validation_metrics=dataframe,
+            test_targets=dataframe,
             test_forecasts=dataframe,
             test_losses=dataframe,
             test_metrics=dataframe,
