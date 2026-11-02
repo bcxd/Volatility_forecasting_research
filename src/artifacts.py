@@ -358,15 +358,25 @@ def create_run_bundle(
         package_versions=package_versions,
     )
 
-    # Build provenance and metadata before creating the directory
-    # so early failures do not leave an empty run directory behind.
-    run_directory = create_run_directory(
-        config.results_root,
-        run_id,
+    final_directory = (
+        config.results_root / run_id
+    )
+
+    if final_directory.exists():
+        raise FileExistsError(
+            "Run directory already exists: "
+            f"{final_directory}"
+        )
+
+    incomplete_directory = (
+        create_run_directory(
+            config.results_root,
+            f".{run_id}.incomplete",
+        )
     )
 
     save_run_artifacts(
-        run_directory,
+        incomplete_directory,
         metadata=metadata,
         validation_forecasts=(
             validation_forecasts
@@ -379,4 +389,8 @@ def create_run_bundle(
         garch_refit_log=garch_refit_log,
     )
 
-    return run_directory
+    incomplete_directory.rename(
+        final_directory
+    )
+
+    return final_directory

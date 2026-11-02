@@ -546,6 +546,10 @@ def test_create_run_bundle_writes_versioned_artifacts(
         config.results_root
         / "20261102T010203Z_abcdef1"
     )
+    assert not (
+        config.results_root
+        / ".20261102T010203Z_abcdef1.incomplete"
+    ).exists()
 
     assert {
         path.name
@@ -578,3 +582,92 @@ def test_create_run_bundle_writes_versioned_artifacts(
     assert metadata["source_snapshot"][
         "sha256"
     ] == "snapshot-checksum"
+
+
+def test_create_run_bundle_does_not_publish_partial_run(
+    monkeypatch,
+    tmp_path,
+):
+    config = ExperimentConfig(
+        raw_path=tmp_path / "snapshot.json",
+        results_root=tmp_path / "results" / "runs",
+    )
+    created_at = datetime(
+        2026,
+        11,
+        2,
+        12,
+        0,
+        tzinfo=timezone.utc,
+    )
+    dataframe = pd.DataFrame(
+        {
+            "value": [1.0],
+        },
+        index=pd.Index(
+            ["row_1"],
+            name="id",
+        ),
+    )
+
+    monkeypatch.setattr(
+        artifacts_module,
+        "collect_git_state",
+        Mock(
+            return_value={
+                "commit": "abcdef1234567890",
+                "working_tree_dirty": False,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        artifacts_module,
+        "collect_package_versions",
+        Mock(return_value={}),
+    )
+    monkeypatch.setattr(
+        artifacts_module,
+        "save_run_artifacts",
+        Mock(
+            side_effect=RuntimeError(
+                "simulated write failure"
+            )
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="simulated write failure",
+    ):
+        create_run_bundle(
+            repository_path=tmp_path,
+            created_at=created_at,
+            config=config,
+            snapshot_metadata={
+                "sha256": "snapshot-checksum",
+            },
+            selected_ewma_name=(
+                "ewma_lambda_0.94"
+            ),
+            selected_ewma_lambda=0.94,
+            validation_forecasts=dataframe,
+            validation_losses=dataframe,
+            validation_metrics=dataframe,
+            test_forecasts=dataframe,
+            test_losses=dataframe,
+            test_metrics=dataframe,
+            garch_refit_log=dataframe,
+        )
+
+    run_id = "20261102T120000Z_abcdef1"
+
+    final_directory = (
+        config.results_root / run_id
+    )
+    incomplete_directory = (
+        config.results_root
+        / f".{run_id}.incomplete"
+    )
+
+    assert not final_directory.exists()
+    assert incomplete_directory.is_dir()
