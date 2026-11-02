@@ -36,6 +36,7 @@ def create_run_directory(
     return run_directory
 
 
+
 def build_run_id(
     created_at: datetime,
     commit_hash: str,
@@ -304,3 +305,74 @@ def collect_package_versions(
         )
 
     return versions
+
+
+def create_run_bundle(
+    *,
+    repository_path: Path,
+    created_at: datetime,
+    config: ExperimentConfig,
+    snapshot_metadata: Mapping[str, Any],
+    selected_ewma_name: str,
+    selected_ewma_lambda: float,
+    validation_forecasts: pd.DataFrame,
+    validation_losses: pd.DataFrame,
+    validation_metrics: pd.DataFrame,
+    test_forecasts: pd.DataFrame,
+    test_losses: pd.DataFrame,
+    test_metrics: pd.DataFrame,
+) -> Path:
+    """Create and persist one versioned experiment result bundle."""
+    git_state = collect_git_state(
+        repository_path
+    )
+    package_versions = (
+        collect_package_versions()
+    )
+
+    run_id = build_run_id(
+        created_at=created_at,
+        commit_hash=str(
+            git_state["commit"]
+        ),
+    )
+
+    metadata = build_run_metadata(
+        run_id=run_id,
+        created_at=created_at,
+        code_commit=str(
+            git_state["commit"]
+        ),
+        working_tree_dirty=bool(
+            git_state["working_tree_dirty"]
+        ),
+        config=config,
+        snapshot_metadata=snapshot_metadata,
+        selected_ewma_name=selected_ewma_name,
+        selected_ewma_lambda=(
+            selected_ewma_lambda
+        ),
+        package_versions=package_versions,
+    )
+
+    # Build provenance and metadata before creating the directory
+    # so early failures do not leave an empty run directory behind.
+    run_directory = create_run_directory(
+        config.results_root,
+        run_id,
+    )
+
+    save_run_artifacts(
+        run_directory,
+        metadata=metadata,
+        validation_forecasts=(
+            validation_forecasts
+        ),
+        validation_losses=validation_losses,
+        validation_metrics=validation_metrics,
+        test_forecasts=test_forecasts,
+        test_losses=test_losses,
+        test_metrics=test_metrics,
+    )
+
+    return run_directory

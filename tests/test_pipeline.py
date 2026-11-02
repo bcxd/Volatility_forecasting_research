@@ -1,8 +1,9 @@
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
-import pytest
 import pandas as pd
+import pytest
 
 import src.pipeline as pipeline_module
 from src.pipeline import build_parser
@@ -418,3 +419,267 @@ def test_generate_test_forecasts_uses_validation_history(
         test_dates
     )
     assert garch_arguments["constraints"] is constraints
+
+
+def test_pipeline_main_persists_complete_run_bundle(
+    monkeypatch,
+    tmp_path,
+):
+    created_at = datetime(
+        2026,
+        11,
+        2,
+        12,
+        30,
+        tzinfo=timezone.utc,
+    )
+    repository_path = tmp_path / "repository"
+    raw_path = tmp_path / "snapshot.json"
+    run_directory = tmp_path / "results" / "run"
+
+    config = ExperimentConfig(
+        raw_path=raw_path,
+        results_root=tmp_path / "results",
+        ewma_lambdas=(0.94,),
+    )
+
+    snapshot_metadata = {
+        "symbol": config.symbol,
+        "interval": config.interval,
+        "requested_start": config.sample_start,
+        "requested_end_exclusive": (
+            config.sample_end_exclusive
+        ),
+        "sha256": "snapshot-checksum",
+    }
+    raw_data = [[1704067200000, "100.0"]]
+    processed_data = pd.DataFrame()
+
+    train_dates = pd.date_range(
+        "2023-12-30",
+        periods=2,
+        freq="D",
+        tz="UTC",
+    )
+    validation_dates = pd.date_range(
+        "2024-01-01",
+        periods=1,
+        freq="D",
+        tz="UTC",
+    )
+    test_dates = pd.date_range(
+        "2025-01-01",
+        periods=1,
+        freq="D",
+        tz="UTC",
+    )
+
+    train_df = pd.DataFrame(
+        {
+            "variance_proxy": [1.0, 2.0],
+        },
+        index=train_dates,
+    )
+    validation_df = pd.DataFrame(
+        {
+            "variance_proxy": [3.0],
+        },
+        index=validation_dates,
+    )
+    test_df = pd.DataFrame(
+        {
+            "variance_proxy": [4.0],
+        },
+        index=test_dates,
+    )
+
+    validation_forecasts = pd.DataFrame(
+        {
+            "ewma_lambda_0.94": [2.5],
+        },
+        index=validation_dates,
+    )
+    validation_metrics = pd.DataFrame(
+        {
+            "QLIKE": [-6.0],
+            "MSE": [0.25],
+            "MAE": [0.5],
+        },
+        index=["ewma_lambda_0.94"],
+    )
+    validation_losses = pd.DataFrame(
+        {
+            "QLIKE": [-6.0],
+            "MSE": [0.25],
+            "MAE": [0.5],
+        },
+        index=pd.MultiIndex.from_product(
+            [
+                validation_dates,
+                ["ewma_lambda_0.94"],
+            ],
+            names=["date", "model"],
+        ),
+    )
+
+    test_forecasts = pd.DataFrame(
+        {
+            "ewma_lambda_0.94": [3.5],
+        },
+        index=test_dates,
+    )
+    test_metrics = pd.DataFrame(
+        {
+            "QLIKE": [-5.0],
+            "MSE": [0.25],
+            "MAE": [0.5],
+        },
+        index=["ewma_lambda_0.94"],
+    )
+    test_losses = pd.DataFrame(
+        {
+            "QLIKE": [-5.0],
+            "MSE": [0.25],
+            "MAE": [0.5],
+        },
+        index=pd.MultiIndex.from_product(
+            [
+                test_dates,
+                ["ewma_lambda_0.94"],
+            ],
+            names=["date", "model"],
+        ),
+    )
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "load_raw_snapshot",
+        Mock(
+            return_value=(
+                raw_data,
+                snapshot_metadata,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "data_validation",
+        Mock(return_value=processed_data),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "save_processed_data",
+        Mock(
+            return_value=tmp_path / "processed.csv"
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "prepare_data",
+        Mock(
+            return_value=(
+                train_df,
+                validation_df,
+                test_df,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "generate_validation_forecasts",
+        Mock(
+            return_value=(
+                validation_forecasts,
+                {
+                    "ewma_lambda_0.94": 0.94,
+                },
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "evaluate_forecasts",
+        Mock(
+            side_effect=[
+                (
+                    validation_metrics,
+                    validation_losses,
+                    validation_forecasts,
+                ),
+                (
+                    test_metrics,
+                    test_losses,
+                    test_forecasts,
+                ),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "generate_test_forecasts",
+        Mock(return_value=test_forecasts),
+    )
+
+    bundle_mock = Mock(
+        return_value=run_directory
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "create_run_bundle",
+        bundle_mock,
+        raising=False,
+    )
+
+    result = pipeline_module.main(
+        config,
+        created_at=created_at,
+        repository_path=repository_path,
+    )
+
+    assert result == run_directory
+
+    bundle_mock.assert_called_once()
+
+    call_arguments = bundle_mock.call_args.kwargs
+
+    assert call_arguments[
+        "repository_path"
+    ] == repository_path
+    assert call_arguments["created_at"] == created_at
+    assert call_arguments["config"] is config
+    assert (
+        call_arguments["snapshot_metadata"]
+        is snapshot_metadata
+    )
+    assert (
+        call_arguments["selected_ewma_name"]
+        == "ewma_lambda_0.94"
+    )
+    assert (
+        call_arguments["selected_ewma_lambda"]
+        == 0.94
+    )
+    assert (
+        call_arguments["validation_forecasts"]
+        is validation_forecasts
+    )
+    assert (
+        call_arguments["validation_losses"]
+        is validation_losses
+    )
+    assert (
+        call_arguments["validation_metrics"]
+        is validation_metrics
+    )
+    assert (
+        call_arguments["test_forecasts"]
+        is test_forecasts
+    )
+    assert (
+        call_arguments["test_losses"]
+        is test_losses
+    )
+    assert (
+        call_arguments["test_metrics"]
+        is test_metrics
+    )

@@ -1,9 +1,11 @@
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
 from src.config import ExperimentConfig
+from src.artifacts import create_run_bundle
 from src.data_io import load_raw_snapshot
 from src.data_validation import data_validation, save_processed_data
 from src.features import calculate_log_returns, variance_proxy
@@ -213,7 +215,22 @@ def generate_test_forecasts(
     return forecasts
 
 
-def main(config: ExperimentConfig):
+def main(
+    config: ExperimentConfig,
+    *,
+    created_at: datetime | None = None,
+    repository_path: Path | None = None,
+):
+    if created_at is None:
+        created_at = datetime.now(
+            timezone.utc
+        )
+
+    if repository_path is None:
+        repository_path = (
+            Path(__file__).resolve().parents[1]
+        )
+
     garch_constraints = build_garch_constraints(
         persistence_margin=(
             config.garch_persistence_margin
@@ -307,6 +324,32 @@ def main(config: ExperimentConfig):
 
     print("\nTest metrics:")
     print(test_results)
+
+    run_directory = create_run_bundle(
+        repository_path=repository_path,
+        created_at=created_at,
+        config=config,
+        snapshot_metadata=metadata,
+        selected_ewma_name=best_name,
+        selected_ewma_lambda=best_lambda,
+        validation_forecasts=(
+            validation_forecasts
+        ),
+        validation_losses=(
+            validation_daily_losses
+        ),
+        validation_metrics=validation_results,
+        test_forecasts=test_forecasts,
+        test_losses=test_daily_losses,
+        test_metrics=test_results,
+    )
+
+    print(
+        f"\nRun artifacts saved to: "
+        f"{run_directory}"
+    )
+
+    return run_directory
 
 
 if __name__ == "__main__":

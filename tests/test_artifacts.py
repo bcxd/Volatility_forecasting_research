@@ -12,6 +12,7 @@ from src.artifacts import (
     build_run_metadata,
     collect_git_state,
     collect_package_versions,
+    create_run_bundle,
     create_run_directory,
     save_dataframe_csv,
     save_metadata_json,
@@ -466,3 +467,109 @@ def test_collect_package_versions_uses_runtime_defaults(
         call("scipy"),
         call("requests"),
     ]
+
+
+def test_create_run_bundle_writes_versioned_artifacts(
+    monkeypatch,
+    tmp_path,
+):
+    config = ExperimentConfig(
+        raw_path=tmp_path / "snapshot.json",
+        results_root=tmp_path / "results" / "runs",
+    )
+    created_at = datetime(
+        2026,
+        11,
+        2,
+        1,
+        2,
+        3,
+        tzinfo=timezone.utc,
+    )
+
+    dataframe = pd.DataFrame(
+        {
+            "value": [1.0],
+        },
+        index=pd.Index(
+            ["row_1"],
+            name="id",
+        ),
+    )
+
+    git_mock = Mock(
+        return_value={
+            "commit": "abcdef1234567890",
+            "working_tree_dirty": True,
+        }
+    )
+    package_mock = Mock(
+        return_value={
+            "numpy": "2.3.0",
+            "pandas": "2.3.1",
+        }
+    )
+
+    monkeypatch.setattr(
+        artifacts_module,
+        "collect_git_state",
+        git_mock,
+    )
+    monkeypatch.setattr(
+        artifacts_module,
+        "collect_package_versions",
+        package_mock,
+    )
+
+    run_directory = create_run_bundle(
+        repository_path=tmp_path,
+        created_at=created_at,
+        config=config,
+        snapshot_metadata={
+            "sha256": "snapshot-checksum",
+        },
+        selected_ewma_name="ewma_lambda_0.94",
+        selected_ewma_lambda=0.94,
+        validation_forecasts=dataframe,
+        validation_losses=dataframe,
+        validation_metrics=dataframe,
+        test_forecasts=dataframe,
+        test_losses=dataframe,
+        test_metrics=dataframe,
+    )
+
+    assert run_directory == (
+        config.results_root
+        / "20261102T010203Z_abcdef1"
+    )
+
+    assert {
+        path.name
+        for path in run_directory.iterdir()
+    } == {
+        "metadata.json",
+        "validation_forecasts.csv",
+        "validation_losses.csv",
+        "validation_metrics.csv",
+        "test_forecasts.csv",
+        "test_losses.csv",
+        "test_metrics.csv",
+    }
+
+    git_mock.assert_called_once_with(tmp_path)
+    package_mock.assert_called_once_with()
+
+    with (
+        run_directory / "metadata.json"
+    ).open(
+        encoding="utf-8",
+    ) as metadata_file:
+        metadata = json.load(metadata_file)
+
+    assert metadata["code"] == {
+        "commit": "abcdef1234567890",
+        "working_tree_dirty": True,
+    }
+    assert metadata["source_snapshot"][
+        "sha256"
+    ] == "snapshot-checksum"
