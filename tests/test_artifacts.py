@@ -222,6 +222,7 @@ def test_save_run_artifacts_writes_standard_files(
         test_forecasts=dataframe,
         test_losses=dataframe,
         test_metrics=dataframe,
+        garch_refit_log=dataframe,
     )
 
     assert set(saved_paths) == {
@@ -232,6 +233,7 @@ def test_save_run_artifacts_writes_standard_files(
         "test_forecasts",
         "test_losses",
         "test_metrics",
+        "garch_refit_log",
     }
 
     assert {
@@ -245,6 +247,7 @@ def test_save_run_artifacts_writes_standard_files(
         "test_forecasts.csv",
         "test_losses.csv",
         "test_metrics.csv",
+        "garch_refit_log.csv",
     }
 
     assert all(
@@ -536,6 +539,7 @@ def test_create_run_bundle_writes_versioned_artifacts(
         test_forecasts=dataframe,
         test_losses=dataframe,
         test_metrics=dataframe,
+        garch_refit_log=dataframe,
     )
 
     assert run_directory == (
@@ -554,6 +558,7 @@ def test_create_run_bundle_writes_versioned_artifacts(
         "test_forecasts.csv",
         "test_losses.csv",
         "test_metrics.csv",
+        "garch_refit_log.csv",
     }
 
     git_mock.assert_called_once_with(tmp_path)

@@ -8,6 +8,7 @@ import pytest
 import src.pipeline as pipeline_module
 from src.pipeline import build_parser
 from src.config import ExperimentConfig
+from src.models import GarchWalkForwardResult
 
 
 def test_pipeline_parser_reads_raw_path():
@@ -226,7 +227,25 @@ def test_generate_validation_forecasts_builds_candidates(
         index=val_dates,
         name="garch_variance",
     )
-    garch_mock = Mock(return_value=garch_result)
+
+    expected_refit_log = pd.DataFrame(
+        {
+            "omega": [0.1],
+            "alpha": [0.2],
+            "beta": [0.5],
+        },
+        index=pd.DatetimeIndex(
+            [val_dates[0]],
+            name="refit_date",
+        ),
+    )
+
+    garch_mock = Mock(
+        return_value=GarchWalkForwardResult(
+            forecasts=garch_result,
+            refit_log=expected_refit_log,
+        )
+    )
 
     monkeypatch.setattr(
         pipeline_module,
@@ -237,6 +256,7 @@ def test_generate_validation_forecasts_builds_candidates(
     (
         forecasts,
         candidate_lambdas,
+        refit_log,
     ) = pipeline_module.generate_validation_forecasts(
         train_df,
         val_df,
@@ -257,6 +277,11 @@ def test_generate_validation_forecasts_builds_candidates(
         "ewma_lambda_0.50": 0.50,
         "ewma_lambda_0.90": 0.90,
     }
+
+    pd.testing.assert_frame_equal(
+        refit_log,
+        expected_refit_log,
+    )
 
     pd.testing.assert_series_equal(
         forecasts["garch_1_1"],
@@ -363,10 +388,25 @@ def test_generate_test_forecasts_uses_validation_history(
         [20.0, 21.0],
         index=test_dates,
     )
+    expected_refit_log = pd.DataFrame(
+        {
+            "omega": [0.1],
+            "alpha": [0.2],
+            "beta": [0.5],
+        },
+        index=pd.DatetimeIndex(
+            [test_dates[0]],
+            name="refit_date",
+        ),
+    )
 
     ewma_mock = Mock(return_value=ewma_result)
-    garch_mock = Mock(return_value=garch_result)
-
+    garch_mock = Mock(
+        return_value=GarchWalkForwardResult(
+            forecasts=garch_result,
+            refit_log=expected_refit_log,
+        )
+    )
     monkeypatch.setattr(
         pipeline_module,
         "calculate_ewma",
@@ -378,7 +418,10 @@ def test_generate_test_forecasts_uses_validation_history(
         garch_mock,
     )
 
-    forecasts = pipeline_module.generate_test_forecasts(
+    (
+        forecasts,
+        refit_log,
+    ) = pipeline_module.generate_test_forecasts(
         train_df,
         val_df,
         test_df,
@@ -394,6 +437,11 @@ def test_generate_test_forecasts_uses_validation_history(
         "ewma_lambda_0.94",
         "garch_1_1",
     ]
+
+    pd.testing.assert_frame_equal(
+        refit_log,
+        expected_refit_log,
+    )
 
     pd.testing.assert_series_equal(
         forecasts["ewma_lambda_0.94"],
@@ -521,6 +569,15 @@ def test_pipeline_main_persists_complete_run_bundle(
             names=["date", "model"],
         ),
     )
+    validation_refit_log = pd.DataFrame(
+        {
+            "omega": [0.1],
+        },
+        index=pd.DatetimeIndex(
+            [validation_dates[0]],
+            name="refit_date",
+        ),
+    )
 
     test_forecasts = pd.DataFrame(
         {
@@ -548,6 +605,15 @@ def test_pipeline_main_persists_complete_run_bundle(
                 ["ewma_lambda_0.94"],
             ],
             names=["date", "model"],
+        ),
+    )
+    test_refit_log = pd.DataFrame(
+        {
+            "omega": [0.2],
+        },
+        index=pd.DatetimeIndex(
+            [test_dates[0]],
+            name="refit_date",
         ),
     )
 
@@ -593,6 +659,7 @@ def test_pipeline_main_persists_complete_run_bundle(
                 {
                     "ewma_lambda_0.94": 0.94,
                 },
+                validation_refit_log,
             )
         ),
     )
@@ -617,7 +684,12 @@ def test_pipeline_main_persists_complete_run_bundle(
     monkeypatch.setattr(
         pipeline_module,
         "generate_test_forecasts",
-        Mock(return_value=test_forecasts),
+        Mock(
+            return_value=(
+                test_forecasts,
+                test_refit_log,
+            )
+        ),
     )
 
     bundle_mock = Mock(
@@ -683,3 +755,69 @@ def test_pipeline_main_persists_complete_run_bundle(
         call_arguments["test_metrics"]
         is test_metrics
     )
+
+    expected_refit_log = (
+        pipeline_module.combine_garch_refit_logs(
+            validation_refit_log,
+            test_refit_log,
+        )
+    )
+
+    pd.testing.assert_frame_equal(
+        call_arguments["garch_refit_log"],
+        expected_refit_log,
+    )
+
+
+def test_combine_garch_refit_logs_labels_periods():
+    validation_date = pd.Timestamp(
+        "2024-01-01",
+        tz="UTC",
+    )
+    test_date = pd.Timestamp(
+        "2025-01-01",
+        tz="UTC",
+    )
+
+    validation_log = pd.DataFrame(
+        {
+            "omega": [0.1],
+            "alpha": [0.2],
+            "beta": [0.5],
+        },
+        index=pd.DatetimeIndex(
+            [validation_date],
+            name="refit_date",
+        ),
+    )
+    test_log = pd.DataFrame(
+        {
+            "omega": [0.2],
+            "alpha": [0.3],
+            "beta": [0.4],
+        },
+        index=pd.DatetimeIndex(
+            [test_date],
+            name="refit_date",
+        ),
+    )
+
+    combined = (
+        pipeline_module.combine_garch_refit_logs(
+            validation_log,
+            test_log,
+        )
+    )
+
+    assert combined.index.tolist() == [
+        validation_date,
+        test_date,
+    ]
+    assert combined.index.name == "refit_date"
+    assert combined["period"].tolist() == [
+        "validation",
+        "test",
+    ]
+
+    assert "period" not in validation_log.columns
+    assert "period" not in test_log.columns

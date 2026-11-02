@@ -92,7 +92,11 @@ def generate_validation_forecasts(
     val_df: pd.DataFrame,
     config: ExperimentConfig,
     garch_constraints,
-) -> tuple[pd.DataFrame, dict[str, float]]:
+) -> tuple[
+    pd.DataFrame,
+    dict[str, float],
+    pd.DataFrame,
+]:
     train_val_df = pd.concat(
         [train_df, val_df]
     ).sort_index()
@@ -131,7 +135,7 @@ def generate_validation_forecasts(
         index=val_df.index,
     )
 
-    forecasts["garch_1_1"] = walk_forward_garch(
+    garch_result = walk_forward_garch(
         df=train_val_df,
         forecast_dates=val_df.index,
         method=config.garch_method,
@@ -140,7 +144,15 @@ def generate_validation_forecasts(
         refit_every=config.garch_refit_every,
     )
 
-    return forecasts, candidate_lambdas
+    forecasts["garch_1_1"] = (
+        garch_result.forecasts
+    )
+
+    return (
+        forecasts,
+        candidate_lambdas,
+        garch_result.refit_log,
+    )
 
 
 def select_best_ewma(
@@ -167,7 +179,10 @@ def generate_test_forecasts(
     best_lambda: float,
     config: ExperimentConfig,
     garch_constraints,
-) -> pd.DataFrame:
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+]:
     all_df = pd.concat(
         [train_df, val_df, test_df]
     ).sort_index()
@@ -185,7 +200,7 @@ def generate_test_forecasts(
     persistence_all = persistence_var(all_df)
     historical_all = historical_var(all_df)
 
-    garch_test = walk_forward_garch(
+    garch_result = walk_forward_garch(
         df=all_df,
         forecast_dates=test_df.index,
         method=config.garch_method,
@@ -210,9 +225,46 @@ def generate_test_forecasts(
         f"ewma_lambda_{best_lambda:.2f}"
     ] = ewma_after_train.loc[test_df.index]
 
-    forecasts["garch_1_1"] = garch_test
+    forecasts["garch_1_1"] = (
+        garch_result.forecasts
+    )
 
-    return forecasts
+    return (
+        forecasts,
+        garch_result.refit_log,
+    )
+
+
+def combine_garch_refit_logs(
+    validation_log: pd.DataFrame,
+    test_log: pd.DataFrame,
+) -> pd.DataFrame:
+    validation_labeled = (
+        validation_log.copy()
+    )
+    test_labeled = test_log.copy()
+
+    validation_labeled.insert(
+        0,
+        "period",
+        "validation",
+    )
+    test_labeled.insert(
+        0,
+        "period",
+        "test",
+    )
+
+    combined = pd.concat(
+        [
+            validation_labeled,
+            test_labeled,
+        ]
+    ).sort_index()
+
+    combined.index.name = "refit_date"
+
+    return combined
 
 
 def main(
@@ -273,6 +325,7 @@ def main(
     (
         validation_forecasts,
         ewma_candidate_lambdas,
+        validation_garch_refit_log,
     ) = generate_validation_forecasts(
         train_df,
         val_df,
@@ -301,7 +354,10 @@ def main(
     print(validation_results)
     print(f"\nSelected EWMA lambda: {best_lambda:.2f}")
 
-    test_forecasts = generate_test_forecasts(
+    (
+        test_forecasts,
+        test_garch_refit_log,
+    ) = generate_test_forecasts(
         train_df,
         val_df,
         test_df,
@@ -325,6 +381,11 @@ def main(
     print("\nTest metrics:")
     print(test_results)
 
+    garch_refit_log = combine_garch_refit_logs(
+        validation_garch_refit_log,
+        test_garch_refit_log,
+    )
+
     run_directory = create_run_bundle(
         repository_path=repository_path,
         created_at=created_at,
@@ -342,6 +403,7 @@ def main(
         test_forecasts=test_forecasts,
         test_losses=test_daily_losses,
         test_metrics=test_results,
+        garch_refit_log=garch_refit_log,
     )
 
     print(

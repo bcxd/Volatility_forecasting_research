@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
+from unittest.mock import Mock
 
 import src.models as models
 from src.models import (
@@ -213,7 +214,12 @@ def test_walk_forward_garch_uses_only_past_returns(monkeypatch):
     forecast_dates = dates[2:]
 
     def fake_minimize_likelihood(**kwargs):
-        return SimpleNamespace(x=np.array([0.1, 0.2, 0.5]))
+        return SimpleNamespace(
+            x=np.array([0.1, 0.2, 0.5]),
+            fun=1.0,
+            success=True,
+            message="optimization succeeded",
+        )
 
     def fake_forecast_garch(params, forecast_returns):
         return 2.0
@@ -238,9 +244,17 @@ def test_walk_forward_garch_uses_only_past_returns(monkeypatch):
         refit_every=7,
     )
 
-    np.testing.assert_allclose(result.to_numpy(), [2.0, 2.9])
-    assert result.index.equals(forecast_dates)
-    assert result.name == "garch_variance"
+    np.testing.assert_allclose(
+        result.forecasts.to_numpy(),
+        [2.0, 2.9],
+    )
+    assert result.forecasts.index.equals(
+        forecast_dates
+    )
+    assert (
+        result.forecasts.name
+        == "garch_variance"
+    )
 
 
 def test_walk_forward_garch_refits_on_schedule(monkeypatch):
@@ -257,7 +271,12 @@ def test_walk_forward_garch_refits_on_schedule(monkeypatch):
 
     def fake_minimize_likelihood(train_returns, **kwargs):
         fit_history_lengths.append(len(train_returns))
-        return SimpleNamespace(x=np.array([0.1, 0.2, 0.5]))
+        return SimpleNamespace(
+            x=np.array([0.1, 0.2, 0.5]),
+            fun=1.0,
+            success=True,
+            message="optimization succeeded",
+        )
 
     def fake_forecast_garch(params, forecast_returns):
         return 1.0
@@ -325,3 +344,96 @@ def test_build_garch_constraints_rejects_invalid_margin(
         build_garch_constraints(
             persistence_margin=invalid_margin,
         )
+
+
+def test_walk_forward_garch_records_refit_diagnostics(
+    monkeypatch,
+):
+    dates = pd.date_range(
+        "2024-01-01",
+        periods=4,
+        freq="D",
+        tz="UTC",
+    )
+    df = pd.DataFrame(
+        {
+            "log_return": [
+                0.1,
+                0.2,
+                0.3,
+                0.4,
+            ],
+        },
+        index=dates,
+    )
+    forecast_dates = dates[2:]
+
+    fit_result = SimpleNamespace(
+        x=np.array([0.1, 0.2, 0.5]),
+        fun=12.5,
+        success=True,
+        message="optimization succeeded",
+    )
+
+    monkeypatch.setattr(
+        models,
+        "minimize_likelihood",
+        Mock(return_value=fit_result),
+    )
+    monkeypatch.setattr(
+        models,
+        "forecast_garch",
+        Mock(return_value=2.0),
+    )
+
+    result = models.walk_forward_garch(
+        df=df,
+        forecast_dates=forecast_dates,
+        method="SLSQP",
+        bounds=(),
+        constraints=(),
+        refit_every=7,
+    )
+
+    np.testing.assert_allclose(
+        result.forecasts.to_numpy(),
+        [2.0, 1.118],
+    )
+
+    refit_log = result.refit_log
+
+    assert refit_log.index.tolist() == [
+        forecast_dates[0],
+    ]
+    assert refit_log.index.name == "refit_date"
+
+    assert refit_log.columns.tolist() == [
+        "history_start",
+        "history_end",
+        "n_observations",
+        "omega",
+        "alpha",
+        "beta",
+        "persistence",
+        "objective",
+        "success",
+        "message",
+        "method",
+    ]
+
+    first_refit = refit_log.iloc[0]
+
+    assert first_refit["history_start"] == dates[0]
+    assert first_refit["history_end"] == dates[1]
+    assert first_refit["n_observations"] == 2
+    assert first_refit["omega"] == 0.1
+    assert first_refit["alpha"] == 0.2
+    assert first_refit["beta"] == 0.5
+    assert first_refit["persistence"] == 0.7
+    assert first_refit["objective"] == 12.5
+    assert first_refit["success"] == True
+    assert (
+        first_refit["message"]
+        == "optimization succeeded"
+    )
+    assert first_refit["method"] == "SLSQP"

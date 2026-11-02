@@ -1,7 +1,16 @@
-# EWMA และ GARCH
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+
+
+@dataclass(frozen=True)
+class GarchWalkForwardResult:
+    """Store GARCH forecasts and refit diagnostics."""
+
+    forecasts: pd.Series
+    refit_log: pd.DataFrame
 
 
 def calculate_ewma(forecast_df, train_df, lamda_):
@@ -216,37 +225,77 @@ def walk_forward_garch(
     refit_every,
 ):
     forecasts = []
+    refit_records = []
+
     variance_state = None
     params = None
-    for i, forecast_date in enumerate(forecast_dates):
-        history = df.loc[df.index < forecast_date, "log_return"]
+
+    for i, forecast_date in enumerate(
+        forecast_dates
+    ):
+        history = df.loc[
+            df.index < forecast_date,
+            "log_return",
+        ]
         forecast_returns = history.to_numpy()
 
         if i % refit_every == 0:
             result = minimize_likelihood(
-                train_returns=history.to_numpy(),
+                train_returns=forecast_returns,
                 method=method,
                 bounds=bounds,
                 constraints=constraints,
             )
 
             params = result.x
-            variance_state = forecast_garch(params, forecast_returns)
+            variance_state = forecast_garch(
+                params,
+                forecast_returns,
+            )
+
+            omega, alpha, beta = params
+
+            refit_records.append(
+                {
+                    "refit_date": forecast_date,
+                    "history_start": history.index[0],
+                    "history_end": history.index[-1],
+                    "n_observations": len(history),
+                    "omega": omega,
+                    "alpha": alpha,
+                    "beta": beta,
+                    "persistence": alpha + beta,
+                    "objective": result.fun,
+                    "success": result.success,
+                    "message": str(result.message),
+                    "method": method,
+                }
+            )
         else:
             omega, alpha, beta = params
 
             variance_state = (
                 omega
-                + alpha * forecast_returns[-1] ** 2
+                + alpha
+                * forecast_returns[-1] ** 2
                 + beta * variance_state
             )
 
         forecasts.append(variance_state)
 
-    return pd.Series(
+    forecast_series = pd.Series(
         forecasts,
         index=forecast_dates,
         name="garch_variance",
+    )
+
+    refit_log = pd.DataFrame.from_records(
+        refit_records
+    ).set_index("refit_date")
+
+    return GarchWalkForwardResult(
+        forecasts=forecast_series,
+        refit_log=refit_log,
     )
 
 
