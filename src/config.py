@@ -6,6 +6,12 @@ from pathlib import Path
 class ExperimentConfig:
     raw_path: Path
 
+    results_root: Path = Path("results/runs")
+    protocol_status: str = "exploratory"
+    amendments_path: Path = Path(
+        "docs/amendments.md"
+    )
+
     symbol: str = "BTCUSDT"
     interval: str = "1d"
     sample_start: str = "2019-01-01"

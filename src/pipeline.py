@@ -267,7 +267,7 @@ def main(config: ExperimentConfig):
 
     (
         validation_results,
-        validation_qlike_losses,
+        validation_daily_losses,
         validation_forecasts,
     ) = evaluate_forecasts(
         actual=actual_validation,
@@ -297,7 +297,7 @@ def main(config: ExperimentConfig):
 
     (
         test_results,
-        test_qlike_losses,
+        test_daily_losses,
         test_forecasts,
     ) = evaluate_forecasts(
         actual=actual_test,

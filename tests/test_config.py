@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from src.config import ExperimentConfig
 
 
@@ -33,3 +35,8 @@ def test_experiment_config_contains_locked_protocol(tmp_path):
     )
     assert config.garch_persistence_margin == 1e-8
     assert config.garch_refit_every == 7
+    assert config.results_root == Path("results/runs")
+    assert config.protocol_status == "exploratory"
+    assert config.amendments_path == Path(
+        "docs/amendments.md"
+    )

@@ -132,7 +132,7 @@ def test_qlike_loss_rejects_nonpositive_forecast(invalid_forecast):
         qlike_loss(actual, forecast)
 
 
-def test_evaluate_forecasts_returns_metrics_and_daily_qlike():
+def test_evaluate_forecasts_returns_metrics_and_daily_losses():
     dates = pd.date_range(
         "2024-01-01",
         periods=2,
@@ -140,7 +140,10 @@ def test_evaluate_forecasts_returns_metrics_and_daily_qlike():
         tz="UTC",
     )
 
-    actual = pd.Series([1.0, 4.0], index=dates)
+    actual = pd.Series(
+        [1.0, 4.0],
+        index=dates,
+    )
     forecasts = pd.DataFrame(
         {
             "model_a": [1.0, 2.0],
@@ -149,19 +152,44 @@ def test_evaluate_forecasts_returns_metrics_and_daily_qlike():
         index=dates,
     )
 
-    metrics, qlike_losses, adjusted = evaluate_forecasts(
+    (
+        metrics,
+        daily_losses,
+        adjusted,
+    ) = evaluate_forecasts(
         actual=actual,
         forecasts=forecasts,
         floor=1e-12,
     )
 
-    assert metrics.index.tolist() == ["model_a", "model_b"]
-    assert metrics.columns.tolist() == ["QLIKE", "MSE", "MAE"]
-    assert qlike_losses.index.equals(dates)
-    assert qlike_losses.columns.tolist() == ["model_a", "model_b"]
-    pd.testing.assert_frame_equal(adjusted, forecasts)
+    assert metrics.index.tolist() == [
+        "model_a",
+        "model_b",
+    ]
+    assert metrics.columns.tolist() == [
+        "QLIKE",
+        "MSE",
+        "MAE",
+    ]
 
-    expected_model_a_qlike = np.array(
+    assert daily_losses.index.names == [
+        "date",
+        "model",
+    ]
+    assert daily_losses.columns.tolist() == [
+        "QLIKE",
+        "MSE",
+        "MAE",
+    ]
+
+    model_a_losses = daily_losses.xs(
+        "model_a",
+        level="model",
+    )
+
+    assert model_a_losses.index.equals(dates)
+
+    expected_qlike = np.array(
         [
             1.0,
             np.log(2.0) + 2.0,
@@ -169,15 +197,28 @@ def test_evaluate_forecasts_returns_metrics_and_daily_qlike():
     )
 
     np.testing.assert_allclose(
-        qlike_losses["model_a"].to_numpy(),
-        expected_model_a_qlike,
+        model_a_losses["QLIKE"].to_numpy(),
+        expected_qlike,
+    )
+    np.testing.assert_allclose(
+        model_a_losses["MSE"].to_numpy(),
+        [0.0, 4.0],
+    )
+    np.testing.assert_allclose(
+        model_a_losses["MAE"].to_numpy(),
+        [0.0, 2.0],
     )
 
     np.testing.assert_allclose(
         metrics.loc["model_a"].to_numpy(),
         [
-            expected_model_a_qlike.mean(),
+            expected_qlike.mean(),
             2.0,
             1.0,
         ],
+    )
+
+    pd.testing.assert_frame_equal(
+        adjusted,
+        forecasts,
     )

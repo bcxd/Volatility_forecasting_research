@@ -95,7 +95,7 @@ def evaluate_forecasts(actual, forecasts, floor):
         raise ValueError("actual and forecasts must have matching dates")
 
     adjusted_forecasts = forecasts.copy()
-    qlike_by_model = {}
+    daily_losses_by_model = {}
     metrics_by_model = {}
 
     for model_name in adjusted_forecasts.columns:
@@ -110,7 +110,14 @@ def evaluate_forecasts(actual, forecasts, floor):
         mse = mse_loss(actual, adjusted_forecast)
         mae = mae_loss(actual, adjusted_forecast)
 
-        qlike_by_model[model_name] = qlike
+        daily_losses_by_model[model_name] = pd.DataFrame(
+            {
+                "QLIKE": qlike,
+                "MSE": mse,
+                "MAE": mae,
+            },
+            index=actual.index,
+        )
 
         metrics_by_model[model_name] = {
             "QLIKE": qlike.mean(),
@@ -123,9 +130,19 @@ def evaluate_forecasts(actual, forecasts, floor):
         orient="index",
     )
 
-    qlike_losses = pd.DataFrame(
-        qlike_by_model,
-        index=actual.index,
+    daily_losses = pd.concat(
+        daily_losses_by_model,
+        names=[
+            "model",
+            "date",
+        ],
     )
 
-    return metrics, qlike_losses, adjusted_forecasts
+    daily_losses = daily_losses.reorder_levels(
+        [
+            "date",
+            "model",
+        ]
+    ).sort_index()
+
+    return metrics, daily_losses, adjusted_forecasts
