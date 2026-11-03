@@ -344,6 +344,13 @@ def test_build_run_metadata_records_provenance(
         "test_end": config.test_end,
     }
 
+    assert metadata["experiment"]["evaluation"] == {
+        "variance_floor": config.variance_floor,
+        "familywise_alpha": (
+            config.familywise_alpha
+        ),
+    }
+
     assert metadata["experiment"]["candidates"][
         "ewma_lambdas"
     ] == list(config.ewma_lambdas)

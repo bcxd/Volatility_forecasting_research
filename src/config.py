@@ -22,6 +22,7 @@ class ExperimentConfig:
     test_end: str = "2026-01-01"
 
     variance_floor: float = 1e-12
+    familywise_alpha: float = 0.05
     ewma_lambdas: tuple[float, ...] = (
         0.90,
         0.94,

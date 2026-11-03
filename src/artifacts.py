@@ -124,6 +124,9 @@ def build_run_metadata(
                 "variance_floor": (
                     config.variance_floor
                 ),
+                "familywise_alpha": (
+                    config.familywise_alpha
+                ),
             },
             "candidates": {
                 "ewma_lambdas": list(

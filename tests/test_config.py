@@ -20,6 +20,7 @@ def test_experiment_config_contains_locked_protocol(tmp_path):
     assert config.test_end == "2026-01-01"
 
     assert config.variance_floor == 1e-12
+    assert config.familywise_alpha == 0.05
     assert config.ewma_lambdas == (
         0.90,
         0.94,
