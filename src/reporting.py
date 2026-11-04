@@ -408,3 +408,80 @@ def load_test_forecast_panel(
     panel.index.name = "date"
 
     return panel
+
+
+def build_metric_summary(
+    metrics: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build a QLIKE-sorted table with ranks for each loss metric."""
+    summary = metrics.copy()
+
+    for metric in _TEST_METRIC_COLUMNS:
+        summary[f"{metric}_rank"] = (
+            summary[metric]
+            .rank(
+                method="min",
+                ascending=True,
+            )
+            .astype(int)
+        )
+
+    summary = summary.loc[
+        :,
+        [
+            "QLIKE",
+            "QLIKE_rank",
+            "MSE",
+            "MSE_rank",
+            "MAE",
+            "MAE_rank",
+        ],
+    ]
+
+    return summary.sort_values(
+        by="QLIKE",
+        ascending=True,
+        kind="stable",
+    )
+
+
+def build_dm_summary(
+    results: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build an interpretable summary of DM comparisons."""
+    summary = results.copy()
+
+    mean_difference = summary[
+        "mean_difference"
+    ]
+
+    summary["lower_mean_loss_model"] = np.where(
+        mean_difference < 0.0,
+        summary["model_a"],
+        np.where(
+            mean_difference > 0.0,
+            summary["model_b"],
+            "tie",
+        ),
+    )
+
+    summary["significant_after_holm"] = (
+        summary["reject_holm"].copy()
+    )
+
+    return summary.loc[
+        :,
+        [
+            "model_a",
+            "model_b",
+            "n_observations",
+            "bandwidth",
+            "mean_difference",
+            "lower_mean_loss_model",
+            "dm_statistic",
+            "raw_p_value",
+            "holm_adjusted_p_value",
+            "familywise_alpha",
+            "significant_after_holm",
+        ],
+    ]

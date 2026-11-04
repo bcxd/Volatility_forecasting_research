@@ -3,6 +3,8 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from src.reporting import (
+    build_dm_summary,
+    build_metric_summary,
     load_dm_results,
     load_test_forecast_panel,
     load_test_metrics,
@@ -909,3 +911,166 @@ def test_load_test_forecast_panel_requires_utc_dates(
         ),
     ):
         load_test_forecast_panel(run_directory)
+
+
+def _valid_test_metrics():
+    return pd.DataFrame(
+        {
+            "QLIKE": [10.0, 2.0, 3.0],
+            "MSE": [3.0, 1.0, 2.0],
+            "MAE": [1.0, 2.0, 0.5],
+        },
+        index=pd.Index(
+            [
+                "persistence",
+                "ewma_lambda_0.97",
+                "garch_1_1",
+            ],
+            name="model",
+        ),
+    )
+
+
+def test_build_metric_summary_sorts_and_ranks_models():
+    metrics = _valid_test_metrics()
+
+    actual = build_metric_summary(metrics)
+
+    expected = pd.DataFrame(
+        {
+            "QLIKE": [2.0, 3.0, 10.0],
+            "QLIKE_rank": [1, 2, 3],
+            "MSE": [1.0, 2.0, 3.0],
+            "MSE_rank": [1, 2, 3],
+            "MAE": [2.0, 0.5, 1.0],
+            "MAE_rank": [3, 1, 2],
+        },
+        index=pd.Index(
+            [
+                "ewma_lambda_0.97",
+                "garch_1_1",
+                "persistence",
+            ],
+            name="model",
+        ),
+    )
+
+    assert_frame_equal(actual, expected)
+
+
+def test_build_metric_summary_gives_ties_same_rank():
+    metrics = _valid_test_metrics()
+    metrics.loc[
+        "garch_1_1",
+        "QLIKE",
+    ] = 2.0
+
+    summary = build_metric_summary(metrics)
+
+    assert (
+        summary.loc[
+            "ewma_lambda_0.97",
+            "QLIKE_rank",
+        ]
+        == 1
+    )
+    assert (
+        summary.loc[
+            "garch_1_1",
+            "QLIKE_rank",
+        ]
+        == 1
+    )
+
+
+def test_build_metric_summary_does_not_mutate_input():
+    metrics = _valid_test_metrics()
+    original = metrics.copy(deep=True)
+
+    build_metric_summary(metrics)
+
+    assert_frame_equal(metrics, original)
+
+
+def _dm_results_with_all_directions():
+    negative = _valid_dm_results()
+    negative.loc[0, "mean_difference"] = -0.2
+    negative.loc[0, "model_a"] = "garch_1_1"
+    negative.loc[0, "model_b"] = "persistence"
+
+    positive = _valid_dm_results()
+    positive.loc[0, "mean_difference"] = 0.1
+    positive.loc[0, "model_a"] = "garch_1_1"
+    positive.loc[0, "model_b"] = "ewma_lambda_0.97"
+
+    tie = _valid_dm_results()
+    tie.loc[0, "mean_difference"] = 0.0
+    tie.loc[0, "model_a"] = "ewma_lambda_0.97"
+    tie.loc[0, "model_b"] = "historical_variance"
+
+    return pd.concat(
+        [negative, positive, tie],
+        ignore_index=True,
+    )
+
+
+def test_build_dm_summary_identifies_lower_loss_model():
+    results = _dm_results_with_all_directions()
+
+    summary = build_dm_summary(results)
+
+    assert summary[
+        "lower_mean_loss_model"
+    ].tolist() == [
+        "garch_1_1",
+        "ewma_lambda_0.97",
+        "tie",
+    ]
+
+
+def test_build_dm_summary_reports_holm_decision():
+    results = _dm_results_with_all_directions()
+    results["reject_holm"] = [
+        True,
+        False,
+        False,
+    ]
+
+    summary = build_dm_summary(results)
+
+    assert summary[
+        "significant_after_holm"
+    ].tolist() == [
+        True,
+        False,
+        False,
+    ]
+
+
+def test_build_dm_summary_keeps_reporting_columns():
+    results = _dm_results_with_all_directions()
+
+    summary = build_dm_summary(results)
+
+    assert list(summary.columns) == [
+        "model_a",
+        "model_b",
+        "n_observations",
+        "bandwidth",
+        "mean_difference",
+        "lower_mean_loss_model",
+        "dm_statistic",
+        "raw_p_value",
+        "holm_adjusted_p_value",
+        "familywise_alpha",
+        "significant_after_holm",
+    ]
+
+
+def test_build_dm_summary_does_not_mutate_input():
+    results = _dm_results_with_all_directions()
+    original = results.copy(deep=True)
+
+    build_dm_summary(results)
+
+    assert_frame_equal(results, original)
