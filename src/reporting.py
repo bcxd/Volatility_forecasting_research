@@ -39,20 +39,36 @@ _DM_NUMERIC_COLUMNS = (
     "familywise_alpha",
 )
 
+_TEST_TARGET_COLUMNS = (
+    "log_return",
+    "variance_proxy",
+)
+
+
+def _required_artifact_path(
+    run_directory: Path,
+    filename: str,
+) -> Path:
+    """Return a required artifact path or raise a clear error."""
+    artifact_path = run_directory / filename
+
+    if not artifact_path.is_file():
+        raise FileNotFoundError(
+            "Required artifact is missing: "
+            f"{artifact_path}"
+        )
+
+    return artifact_path
+
 
 def load_test_metrics(
     run_directory: Path,
 ) -> pd.DataFrame:
     """Load aggregate test metrics with model names as the index."""
-    metrics_path = (
-        run_directory / "test_metrics.csv"
+    metrics_path = _required_artifact_path(
+        run_directory,
+        "test_metrics.csv",
     )
-
-    if not metrics_path.is_file():
-        raise FileNotFoundError(
-            "Required artifact is missing: "
-            f"{metrics_path}"
-        )
 
     metrics = pd.read_csv(
         metrics_path,
@@ -106,15 +122,10 @@ def load_dm_results(
     run_directory: Path,
 ) -> pd.DataFrame:
     """Load saved Diebold-Mariano comparison results."""
-    results_path = (
-        run_directory / "dm_results.csv"
+    results_path = _required_artifact_path(
+        run_directory,
+        "dm_results.csv",
     )
-
-    if not results_path.is_file():
-        raise FileNotFoundError(
-            "Required artifact is missing: "
-            f"{results_path}"
-        )
 
     results = pd.read_csv(
         results_path,
@@ -242,3 +253,158 @@ def load_dm_results(
     )
 
     return results
+
+
+def load_test_forecast_panel(
+    run_directory: Path,
+) -> pd.DataFrame:
+    """Load and align test targets with model forecasts."""
+    targets_path = _required_artifact_path(
+        run_directory,
+        "test_targets.csv",
+    )
+    forecasts_path = _required_artifact_path(
+        run_directory,
+        "test_forecasts.csv",
+    )
+
+    targets = pd.read_csv(
+        targets_path,
+        index_col=0,
+        parse_dates=[0],
+    )
+    forecasts = pd.read_csv(
+        forecasts_path,
+        index_col=0,
+        parse_dates=[0],
+    )
+
+    if tuple(targets.columns) != (
+        _TEST_TARGET_COLUMNS
+    ):
+        expected_columns = ", ".join(
+            _TEST_TARGET_COLUMNS
+        )
+        raise ValueError(
+            "test target columns must be exactly: "
+            f"{expected_columns}"
+        )
+
+    if (
+        len(targets.index) == 0
+        or len(forecasts.index) == 0
+    ):
+        raise ValueError(
+            "test forecast panel must not be empty"
+        )
+
+    if forecasts.shape[1] == 0:
+        raise ValueError(
+            "test forecasts must contain "
+            "at least one model"
+        )
+
+    if not targets.index.is_unique:
+        raise ValueError(
+            "test target dates must be unique"
+        )
+
+    if not forecasts.index.is_unique:
+        raise ValueError(
+            "test forecast dates must be unique"
+        )
+
+    if not targets.index.equals(
+        forecasts.index
+    ):
+        raise ValueError(
+            "target and forecast dates must match"
+        )
+
+    if (
+        not isinstance(
+            targets.index,
+            pd.DatetimeIndex,
+        )
+        or not isinstance(
+            forecasts.index,
+            pd.DatetimeIndex,
+        )
+        or targets.index.tz is None
+        or forecasts.index.tz is None
+        or str(targets.index.tz) != "UTC"
+        or str(forecasts.index.tz) != "UTC"
+    ):
+        raise ValueError(
+            "test dates must be timezone-aware UTC"
+        )
+
+    if not targets.index.is_monotonic_increasing:
+        raise ValueError(
+            "test dates must be strictly increasing"
+        )
+
+    try:
+        targets = targets.apply(
+            pd.to_numeric,
+            errors="raise",
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "test targets must be numeric"
+        ) from error
+
+    target_values = targets.to_numpy(
+        dtype=float
+    )
+
+    if not np.isfinite(
+        target_values
+    ).all():
+        raise ValueError(
+            "test targets must be finite"
+        )
+
+    if (
+        targets["variance_proxy"] < 0.0
+    ).any():
+        raise ValueError(
+            "variance proxy must be nonnegative"
+        )
+
+    try:
+        forecasts = forecasts.apply(
+            pd.to_numeric,
+            errors="raise",
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "test forecasts must be numeric"
+        ) from error
+
+    forecast_values = forecasts.to_numpy(
+        dtype=float
+    )
+
+    if not np.isfinite(
+        forecast_values
+    ).all():
+        raise ValueError(
+            "test forecasts must be finite"
+        )
+
+    if (forecast_values <= 0.0).any():
+        raise ValueError(
+            "test forecasts must be positive"
+        )
+
+    panel = pd.concat(
+        [
+            targets[["variance_proxy"]],
+            forecasts,
+        ],
+        axis=1,
+    )
+    panel.index.name = "date"
+
+    return panel

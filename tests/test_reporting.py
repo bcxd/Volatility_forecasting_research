@@ -4,6 +4,7 @@ from pandas.testing import assert_frame_equal
 
 from src.reporting import (
     load_dm_results,
+    load_test_forecast_panel,
     load_test_metrics,
 )
 
@@ -447,3 +448,464 @@ def test_load_dm_results_requires_boolean_decisions(
         match="reject_holm must be boolean",
     ):
         load_dm_results(run_directory)
+
+
+def _valid_test_forecast_artifacts():
+    dates = pd.date_range(
+        "2025-01-01",
+        periods=2,
+        freq="D",
+        tz="UTC",
+    )
+    dates.name = "open_time"
+
+    targets = pd.DataFrame(
+        {
+            "log_return": [0.01, -0.02],
+            "variance_proxy": [0.0001, 0.0004],
+        },
+        index=dates,
+    )
+
+    forecasts = pd.DataFrame(
+        {
+            "persistence": [0.0002, 0.0001],
+            "garch_1_1": [0.0003, 0.0002],
+        },
+        index=dates,
+    )
+
+    return targets, forecasts
+
+
+def _write_test_forecast_artifacts(
+    tmp_path,
+    targets,
+    forecasts,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    targets.to_csv(
+        run_directory / "test_targets.csv"
+    )
+    forecasts.to_csv(
+        run_directory / "test_forecasts.csv"
+    )
+
+    return run_directory
+
+
+def test_load_test_forecast_panel_aligns_saved_data(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    expected = pd.concat(
+        [
+            targets[["variance_proxy"]],
+            forecasts,
+        ],
+        axis=1,
+    )
+    expected.index.name = "date"
+
+    actual = load_test_forecast_panel(
+        run_directory
+    )
+
+    assert_frame_equal(
+        actual,
+        expected,
+        check_freq=False,
+    )
+
+
+def test_load_test_forecast_panel_requires_targets(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=(
+            "Required artifact is missing: "
+            ".*test_targets\\.csv"
+        ),
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_forecasts(
+    tmp_path,
+):
+    targets, _ = (
+        _valid_test_forecast_artifacts()
+    )
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+    targets.to_csv(
+        run_directory / "test_targets.csv"
+    )
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=(
+            "Required artifact is missing: "
+            ".*test_forecasts\\.csv"
+        ),
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_target_columns(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    targets = targets.drop(
+        columns=["log_return"]
+    )
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test target columns must be exactly",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_matching_dates(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    forecasts.index = forecasts.index.shift(
+        1,
+        freq="D",
+    )
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="target and forecast dates must match",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_unique_dates(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    forecasts.index = pd.DatetimeIndex(
+        [
+            forecasts.index[0],
+            forecasts.index[0],
+        ],
+        name="open_time",
+    )
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test forecast dates must be unique",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_numeric_forecasts(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    forecasts["garch_1_1"] = (
+        forecasts["garch_1_1"].astype(object)
+    )
+    forecasts.loc[
+        forecasts.index[0],
+        "garch_1_1",
+    ] = "not-a-number"
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test forecasts must be numeric",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_finite_forecasts(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    forecasts.loc[
+        forecasts.index[0],
+        "garch_1_1",
+    ] = float("inf")
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test forecasts must be finite",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_positive_forecasts(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    forecasts.loc[
+        forecasts.index[0],
+        "garch_1_1",
+    ] = 0.0
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test forecasts must be positive",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_rejects_empty_data(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    targets = targets.iloc[0:0]
+    forecasts = forecasts.iloc[0:0]
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test forecast panel must not be empty",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_model_column(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    forecasts = forecasts.iloc[:, 0:0]
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "test forecasts must contain "
+            "at least one model"
+        ),
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_numeric_targets(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    targets["log_return"] = (
+        targets["log_return"].astype(object)
+    )
+    targets.loc[
+        targets.index[0],
+        "log_return",
+    ] = "not-a-number"
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test targets must be numeric",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_finite_targets(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    targets.loc[
+        targets.index[0],
+        "variance_proxy",
+    ] = float("inf")
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test targets must be finite",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_nonnegative_target(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    targets.loc[
+        targets.index[0],
+        "variance_proxy",
+    ] = -0.0001
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="variance proxy must be nonnegative",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_chronological_dates(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    targets = targets.iloc[::-1]
+    forecasts = forecasts.loc[targets.index]
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test dates must be strictly increasing",
+    ):
+        load_test_forecast_panel(run_directory)
+
+
+def test_load_test_forecast_panel_requires_utc_dates(
+    tmp_path,
+):
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+    targets.index = (
+        targets.index.tz_localize(None)
+    )
+    forecasts.index = (
+        forecasts.index.tz_localize(None)
+    )
+
+    run_directory = (
+        _write_test_forecast_artifacts(
+            tmp_path,
+            targets,
+            forecasts,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "test dates must be timezone-aware UTC"
+        ),
+    ):
+        load_test_forecast_panel(run_directory)
