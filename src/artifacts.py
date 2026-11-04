@@ -229,6 +229,7 @@ def save_run_artifacts(
     test_losses: pd.DataFrame,
     test_metrics: pd.DataFrame,
     garch_refit_log: pd.DataFrame,
+    dm_results: pd.DataFrame,
 ) -> dict[str, Path]:
     """Persist the standard forecast, loss, metric, and metadata bundle."""
     dataframes = {
@@ -241,6 +242,7 @@ def save_run_artifacts(
         "test_losses": test_losses,
         "test_metrics": test_metrics,
         "garch_refit_log": garch_refit_log,
+        "dm_results": dm_results,
     }
 
     saved_paths = {}
@@ -333,6 +335,7 @@ def create_run_bundle(
     test_losses: pd.DataFrame,
     test_metrics: pd.DataFrame,
     garch_refit_log: pd.DataFrame,
+    dm_results: pd.DataFrame,
 ) -> Path:
     """Create and persist one versioned experiment result bundle."""
     git_state = collect_git_state(
@@ -398,6 +401,7 @@ def create_run_bundle(
         test_losses=test_losses,
         test_metrics=test_metrics,
         garch_refit_log=garch_refit_log,
+        dm_results=dm_results,
     )
 
     incomplete_directory.rename(

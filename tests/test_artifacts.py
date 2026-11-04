@@ -235,6 +235,7 @@ def test_save_run_artifacts_writes_standard_files(
         test_losses=dataframe,
         test_metrics=dataframe,
         garch_refit_log=dataframe,
+        dm_results=dataframe,
         validation_targets=targets,
         test_targets=targets,
     )
@@ -248,6 +249,7 @@ def test_save_run_artifacts_writes_standard_files(
         "test_losses",
         "test_metrics",
         "garch_refit_log",
+        "dm_results",
         "validation_targets",
         "test_targets",
     }
@@ -264,6 +266,7 @@ def test_save_run_artifacts_writes_standard_files(
         "test_losses.csv",
         "test_metrics.csv",
         "garch_refit_log.csv",
+        "dm_results.csv",
         "validation_targets.csv",
         "test_targets.csv",
     }
@@ -567,6 +570,7 @@ def test_create_run_bundle_writes_versioned_artifacts(
         test_losses=dataframe,
         test_metrics=dataframe,
         garch_refit_log=dataframe,
+        dm_results=dataframe,
     )
 
     assert run_directory == (
@@ -592,6 +596,7 @@ def test_create_run_bundle_writes_versioned_artifacts(
         "test_losses.csv",
         "test_metrics.csv",
         "garch_refit_log.csv",
+        "dm_results.csv",
     }
 
     git_mock.assert_called_once_with(tmp_path)
@@ -688,6 +693,7 @@ def test_create_run_bundle_does_not_publish_partial_run(
             test_losses=dataframe,
             test_metrics=dataframe,
             garch_refit_log=dataframe,
+            dm_results=dataframe,
         )
 
     run_id = "20261102T120000Z_abcdef1"

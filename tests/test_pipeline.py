@@ -619,6 +619,29 @@ def test_pipeline_main_persists_complete_run_bundle(
         ),
     )
 
+    dm_results = pd.DataFrame(
+        {
+            "model_a": [
+                "garch_1_1",
+            ],
+            "model_b": [
+                "ewma_lambda_0.94",
+            ],
+            "raw_p_value": [
+                0.10,
+            ],
+            "holm_adjusted_p_value": [
+                0.50,
+            ],
+            "familywise_alpha": [
+                0.05,
+            ],
+            "reject_holm": [
+                False,
+            ],
+        }
+    )
+
     monkeypatch.setattr(
         pipeline_module,
         "load_raw_snapshot",
@@ -694,6 +717,16 @@ def test_pipeline_main_persists_complete_run_bundle(
         ),
     )
 
+    comparison_mock = Mock(
+        return_value=dm_results
+    )
+    monkeypatch.setattr(
+        pipeline_module,
+        "compare_qlike_losses",
+        comparison_mock,
+        raising=False,
+    )
+
     bundle_mock = Mock(
         return_value=run_directory
     )
@@ -710,11 +743,24 @@ def test_pipeline_main_persists_complete_run_bundle(
         repository_path=repository_path,
     )
 
+    comparison_mock.assert_called_once_with(
+        test_losses,
+        selected_ewma_name=(
+            "ewma_lambda_0.94"
+        ),
+        alpha=config.familywise_alpha,
+    )
+
     assert result == run_directory
 
     bundle_mock.assert_called_once()
 
     call_arguments = bundle_mock.call_args.kwargs
+
+    assert (
+        call_arguments["dm_results"]
+        is dm_results
+    )
 
     assert call_arguments[
         "repository_path"

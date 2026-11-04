@@ -120,6 +120,8 @@ Acceptance: saved metrics can be recomputed from saved daily loss files; source 
 
 ### Phase 5 — Add statistical comparison
 
+Status: complete.
+
 - Implement the pre-specified DM/HAC calculation.
 - Add Holm adjustment in the fixed five-comparison family.
 - Test sign convention, bandwidth, degenerate differentials, missing values, and adjustment order.

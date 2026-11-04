@@ -73,5 +73,6 @@ The 2025 test-period metrics were inspected during development, so current
 2025 findings are exploratory rather than untouched confirmatory evidence.
 See [protocol amendments](docs/amendments.md).
 
-Statistical comparison and artifact-based reporting have not been implemented
-yet.
+DM/HAC comparisons and Holm-adjusted results are implemented and saved in
+`dm_results.csv`. Tables and figures generated from saved artifacts remain to
+be implemented.

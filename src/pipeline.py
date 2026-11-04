@@ -10,6 +10,7 @@ from src.data_io import load_raw_snapshot
 from src.data_validation import data_validation, save_processed_data
 from src.features import calculate_log_returns, variance_proxy
 from src.splits import split_data
+from src.statistical_tests import compare_qlike_losses
 from src.benchmarks import persistence_var, historical_var
 from src.models import (
     build_garch_constraints,
@@ -399,6 +400,12 @@ def main(
     print("\nTest metrics:")
     print(test_results)
 
+    dm_results = compare_qlike_losses(
+        test_daily_losses,
+        selected_ewma_name=best_name,
+        alpha=config.familywise_alpha,
+    )
+
     garch_refit_log = combine_garch_refit_logs(
         validation_garch_refit_log,
         test_garch_refit_log,
@@ -424,6 +431,7 @@ def main(
         test_losses=test_daily_losses,
         test_metrics=test_results,
         garch_refit_log=garch_refit_log,
+        dm_results=dm_results,
     )
 
     print(
