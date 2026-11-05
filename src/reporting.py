@@ -4,6 +4,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 
 _TEST_METRIC_COLUMNS = (
@@ -485,3 +487,48 @@ def build_dm_summary(
             "significant_after_holm",
         ],
     ]
+
+
+def plot_test_volatility(
+    panel: pd.DataFrame,
+) -> tuple[Figure, Axes]:
+    """Plot daily volatility percentages derived from variance data."""
+    volatility_percent = (
+        np.sqrt(panel) * 100.0
+    )
+
+    figure = Figure(
+        figsize=(12, 6),
+        layout="constrained",
+    )
+    axis = figure.subplots()
+
+    axis.plot(
+        volatility_percent.index,
+        volatility_percent["variance_proxy"],
+        label="Realized volatility proxy",
+        color="black",
+        linewidth=1.0,
+        alpha=0.45,
+    )
+
+    for model_name in volatility_percent.columns[1:]:
+        axis.plot(
+            volatility_percent.index,
+            volatility_percent[model_name],
+            label=model_name,
+            linewidth=1.4,
+        )
+
+    axis.set_xlabel("Date")
+    axis.set_ylabel("Daily volatility (%)")
+    axis.set_title(
+        "One-Day-Ahead Volatility Forecasts"
+    )
+    axis.grid(
+        visible=True,
+        alpha=0.25,
+    )
+    axis.legend()
+
+    return figure, axis

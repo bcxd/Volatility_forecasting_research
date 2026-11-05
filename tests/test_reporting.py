@@ -1,5 +1,7 @@
+import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.figure import Figure
 from pandas.testing import assert_frame_equal
 
 from src.reporting import (
@@ -8,6 +10,7 @@ from src.reporting import (
     load_dm_results,
     load_test_forecast_panel,
     load_test_metrics,
+    plot_test_volatility,
 )
 
 
@@ -1074,3 +1077,80 @@ def test_build_dm_summary_does_not_mutate_input():
     build_dm_summary(results)
 
     assert_frame_equal(results, original)
+
+
+def _valid_volatility_panel():
+    targets, forecasts = (
+        _valid_test_forecast_artifacts()
+    )
+
+    panel = pd.concat(
+        [
+            targets[["variance_proxy"]],
+            forecasts,
+        ],
+        axis=1,
+    )
+    panel.index.name = "date"
+
+    return panel
+
+
+def test_plot_test_volatility_transforms_variance_to_percent():
+    panel = _valid_volatility_panel()
+
+    figure, axis = plot_test_volatility(
+        panel
+    )
+
+    assert isinstance(figure, Figure)
+
+    expected_columns = list(panel.columns)
+    plotted_labels = [
+        line.get_label()
+        for line in axis.lines
+    ]
+
+    assert plotted_labels == [
+        "Realized volatility proxy",
+        *expected_columns[1:],
+    ]
+
+    for line, column in zip(
+        axis.lines,
+        expected_columns,
+        strict=True,
+    ):
+        expected_values = (
+            np.sqrt(panel[column]) * 100.0
+        )
+        np.testing.assert_allclose(
+            line.get_ydata(),
+            expected_values,
+        )
+
+
+def test_plot_test_volatility_sets_labels():
+    panel = _valid_volatility_panel()
+
+    _, axis = plot_test_volatility(panel)
+
+    assert axis.get_xlabel() == "Date"
+    assert (
+        axis.get_ylabel()
+        == "Daily volatility (%)"
+    )
+    assert (
+        axis.get_title()
+        == "One-Day-Ahead Volatility Forecasts"
+    )
+    assert axis.get_legend() is not None
+
+
+def test_plot_test_volatility_does_not_mutate_input():
+    panel = _valid_volatility_panel()
+    original = panel.copy(deep=True)
+
+    plot_test_volatility(panel)
+
+    assert_frame_equal(panel, original)
