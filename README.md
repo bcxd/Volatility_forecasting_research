@@ -97,3 +97,11 @@ See [protocol amendments](docs/amendments.md).
 DM/HAC comparisons and Holm-adjusted results are saved in `dm_results.csv`.
 Reporting reads the saved run artifacts and reproduces summary tables and
 diagnostic figures without downloading data or refitting models.
+
+## Results
+
+The current [exploratory results](docs/results.md) report the validation
+selection, test losses, Holm-adjusted DM comparisons, numerical diagnostics,
+and limitations. The word exploratory is important: the 2025 test period was
+inspected during development and is not presented as an untouched
+confirmatory holdout.
