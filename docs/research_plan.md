@@ -38,16 +38,16 @@ make a causal claim or test portfolio performance.
 | Validation | 2024-01-01 through 2024-12-31 |
 | Test | 2025-01-01 through 2025-12-31 |
 
-For closing price \(C_t\),
+For closing price $C_t$,
 
-\[
+$$
 r_t = \log(C_t/C_{t-1}), \qquad y_t=r_t^2.
-\]
+$$
 
-The target is \(h_{t+1|t}=\operatorname{Var}(r_{t+1}\mid\mathcal F_t)\), and
-\(y_{t+1}\) is its noisy daily proxy. It is not labeled intraday realized
-variance. A forecast dated \(t+1\) uses information available only through the
-close of day \(t\).
+The target is $h_{t+1\mid t}=\operatorname{Var}(r_{t+1}\mid\mathcal F_t)$,
+and $y_{t+1}$ is its noisy daily proxy. It is not labeled intraday realized
+variance. A forecast dated $t+1$ uses information available only through the
+close of day $t$.
 
 ## 3. Models and selection
 
@@ -55,17 +55,17 @@ All models forecast variance on the same dates.
 
 | Model | Specification or selection rule |
 |---|---|
-| Persistence | \(\hat h_{t+1|t}=r_t^2\) |
-| Historical variance | Expanding mean of squared returns available at \(t\) |
-| EWMA | Candidates \(\lambda\in\{0.90,0.94,0.97,0.99\}\); select the lowest validation QLIKE |
+| Persistence | $\hat h_{t+1\mid t}=r_t^2$ |
+| Historical variance | Expanding mean of squared returns available at $t$ |
+| EWMA | Candidates $\lambda\in\{0.90,0.94,0.97,0.99\}$; select the lowest validation QLIKE |
 | GARCH | Fixed zero-mean Gaussian GARCH(1,1) |
 
 EWMA updates as
 
-\[
-\hat h_{t+1|t}
-=\lambda\hat h_{t|t-1}+(1-\lambda)r_t^2.
-\]
+$$
+\hat h_{t+1\mid t}
+=\lambda\hat h_{t\mid t-1}+(1-\lambda)r_t^2.
+$$
 
 Its initial variance is the training-sample mean squared return. After
 validation selection, the chosen EWMA state is carried into test rather than
@@ -73,13 +73,13 @@ reinitialized.
 
 GARCH(1,1) is
 
-\[
+$$
 r_t=\epsilon_t, \qquad
 h_t=\omega+\alpha\epsilon_{t-1}^2+\beta h_{t-1},
-\]
+$$
 
-with \(\omega>0\), \(\alpha\geq0\), \(\beta\geq0\), and
-\(\alpha+\beta<1\). Parameters are estimated by Gaussian quasi-maximum
+with $\omega>0$, $\alpha\geq0$, $\beta\geq0$, and
+$\alpha+\beta<1$. Parameters are estimated by Gaussian quasi-maximum
 likelihood. The Gaussian assumption defines the estimation objective; it is
 not a claim that unconditional Bitcoin returns are normally distributed.
 
@@ -88,12 +88,12 @@ not a claim that unconditional Bitcoin returns are normally distributed.
 | Setting | Value |
 |---|---|
 | Optimizer | SLSQP |
-| Starting values | \(\omega_0=0.05\overline{r^2}\), \(\alpha_0=0.10\), \(\beta_0=0.85\) |
-| Bounds | \(\omega\geq10^{-12}\), \(0\leq\alpha\leq1\), \(0\leq\beta\leq1\) |
-| Persistence constraint | \(\alpha+\beta\leq1-10^{-8}\) |
-| Initial filtered variance | \(\max(\operatorname{mean}(r^2),10^{-12})\) |
+| Starting values | $\omega_0=0.05\overline{r^2}$, $\alpha_0=0.10$, $\beta_0=0.85$ |
+| Bounds | $\omega\geq10^{-12}$, $0\leq\alpha\leq1$, $0\leq\beta\leq1$ |
+| Persistence constraint | $\alpha+\beta\leq1-10^{-8}$ |
+| Initial filtered variance | $\max(\operatorname{mean}(r^2),10^{-12})$ |
 | Refit schedule | Every 7 forecast origins |
-| Common variance floor | \(10^{-12}\) |
+| Common variance floor | $10^{-12}$ |
 
 GARCH is fit at the first forecast origin of validation and test and then on
 the fixed seven-day schedule. Each fit uses only returns observed before its
@@ -108,22 +108,22 @@ optimizer is introduced after inspecting test results.
 
 The primary loss is mean QLIKE on the variance scale:
 
-\[
+$$
 L_{\mathrm{QLIKE}}(y_t,\hat h_t)
 =\log(\max(\hat h_t,\epsilon))
 +\frac{y_t}{\max(\hat h_t,\epsilon)},
 \qquad \epsilon=10^{-12}.
-\]
+$$
 
 MSE and MAE are secondary losses. Lower values are better. QLIKE effect sizes
 are reported as mean loss differences, not percentage improvements. For
-comparison \(A\) versus \(B\),
+comparison $A$ versus $B$,
 
-\[
+$$
 d_t=L_{A,t}-L_{B,t},
-\]
+$$
 
-so a negative mean differential favors model \(A\).
+so a negative mean differential favors model $A$.
 
 The five pre-specified comparisons are:
 
@@ -136,13 +136,13 @@ The five pre-specified comparisons are:
 Each comparison uses a two-sided asymptotic Diebold-Mariano test. The
 long-run variance uses a Bartlett-kernel Newey-West HAC estimator with
 
-\[
+$$
 L=\left\lfloor4(T/100)^{2/9}\right\rfloor.
-\]
+$$
 
 No Harvey-Leybourne-Newbold small-sample correction is applied. Holm
 adjustment controls the family-wise error rate across the five comparisons at
-\(\alpha=0.05\). Results report raw and adjusted p-values, the mean loss
+$\alpha=0.05$. Results report raw and adjusted p-values, the mean loss
 difference, and the comparison direction. Missing or non-finite paired losses
 stop the run rather than being silently removed.
 
