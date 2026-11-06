@@ -99,9 +99,9 @@ market data.
 ## Research protocol
 
 The forecast definitions, model settings, data splits, and evaluation rules
-are documented in the [research plan](docs/research_plan.md). Planned
-implementation phases are listed in the
-[implementation plan](docs/implementation_plan.md).
+are documented in the [research protocol](docs/research_plan.md). The
+executable workflow, module responsibilities, and saved artifacts are
+described in the [project architecture](docs/architecture.md).
 
 The 2025 test-period metrics were inspected during development, so current
 2025 findings are exploratory rather than untouched confirmatory evidence.
