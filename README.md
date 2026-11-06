@@ -5,6 +5,19 @@ persistence, expanding historical variance, EWMA, and GARCH(1,1). It uses
 daily Binance Spot candles and evaluates forecasts against squared log
 returns with QLIKE, MSE, and MAE.
 
+## Main result
+
+EWMA with validation-selected lambda 0.97 had the lowest 2025 test QLIKE,
+MSE, and MAE. Its QLIKE advantage over GARCH(1,1) was not statistically
+significant after Holm adjustment. Both models had significantly lower QLIKE
+than expanding historical variance.
+
+![Cumulative QLIKE difference versus historical variance](docs/figures/cumulative_qlike.png)
+
+Negative values favor the candidate model. These findings are exploratory
+because the 2025 test period was inspected during development. See the
+[full results and limitations](docs/results.md).
+
 ## Quick start
 
 Run these commands from the repository root in PowerShell.
@@ -97,11 +110,3 @@ See [protocol amendments](docs/amendments.md).
 DM/HAC comparisons and Holm-adjusted results are saved in `dm_results.csv`.
 Reporting reads the saved run artifacts and reproduces summary tables and
 diagnostic figures without downloading data or refitting models.
-
-## Results
-
-The current [exploratory results](docs/results.md) report the validation
-selection, test losses, Holm-adjusted DM comparisons, numerical diagnostics,
-and limitations. The word exploratory is important: the 2025 test period was
-inspected during development and is not presented as an untouched
-confirmatory holdout.
