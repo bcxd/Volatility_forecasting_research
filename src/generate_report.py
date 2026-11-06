@@ -1,6 +1,8 @@
 """Generate tables and figures from a saved experiment run."""
 
 import argparse
+import json
+from importlib.metadata import version as package_version
 from pathlib import Path
 
 from src.reporting import (
@@ -51,6 +53,12 @@ def generate_report(
     benchmark_name: str = DEFAULT_REPORT_BENCHMARK,
 ) -> Path:
     """Create one atomic report bundle without refitting models."""
+    if not run_directory.is_dir():
+        raise FileNotFoundError(
+            "Run directory not found: "
+            f"{run_directory}"
+        )
+
     report_id = run_directory.name
     final_directory = output_root / report_id
 
@@ -108,10 +116,47 @@ def generate_report(
         for model_name in cumulative_qlike.columns
         if model_name != "persistence"
     ]
+    selected_plot_columns = (
+        plot_columns
+        or list(cumulative_qlike.columns)
+    )
     cumulative_plot_data = cumulative_qlike.loc[
         :,
-        plot_columns or list(cumulative_qlike.columns),
+        selected_plot_columns,
     ]
+
+    report_metadata = {
+        "source_run_id": report_id,
+        "benchmark_name": benchmark_name,
+        "cumulative_plot_models": (
+            selected_plot_columns
+        ),
+        "cumulative_plot_excluded_models": [
+            model_name
+            for model_name in cumulative_qlike.columns
+            if model_name not in selected_plot_columns
+        ],
+        "matplotlib_version": package_version(
+            "matplotlib"
+        ),
+    }
+    metadata_path = (
+        incomplete_directory / "report_metadata.json"
+    )
+    with metadata_path.open(
+        mode="x",
+        encoding="utf-8",
+        newline="\n",
+    ) as metadata_file:
+        json.dump(
+            report_metadata,
+            metadata_file,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        metadata_file.write("\n")
+
     cumulative_figure, _ = plot_cumulative_qlike(
         cumulative_plot_data,
         benchmark_name=benchmark_name,

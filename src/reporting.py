@@ -70,6 +70,23 @@ def _required_artifact_path(
     return artifact_path
 
 
+def _display_model_name(model_name: str) -> str:
+    """Return a readable plot label for a stored model name."""
+    if model_name == "persistence":
+        return "Persistence"
+    if model_name == "historical_variance":
+        return "Historical variance"
+    if model_name == "garch_1_1":
+        return "GARCH(1,1)"
+    if model_name.startswith("ewma_lambda_"):
+        lambda_value = model_name.removeprefix(
+            "ewma_lambda_"
+        )
+        return f"EWMA (lambda={lambda_value})"
+
+    return model_name
+
+
 def load_test_metrics(
     run_directory: Path,
 ) -> pd.DataFrame:
@@ -523,7 +540,7 @@ def plot_test_volatility(
         axis.plot(
             volatility_percent.index,
             volatility_percent[model_name],
-            label=model_name,
+            label=_display_model_name(model_name),
             linewidth=1.4,
         )
 
@@ -706,7 +723,7 @@ def plot_cumulative_qlike(
         axis.plot(
             cumulative_differences.index,
             cumulative_differences[model_name],
-            label=model_name,
+            label=_display_model_name(model_name),
             linewidth=1.5,
         )
 
@@ -722,7 +739,7 @@ def plot_cumulative_qlike(
     )
     axis.set_title(
         "Cumulative QLIKE Difference vs "
-        f"{benchmark_name}"
+        f"{_display_model_name(benchmark_name)}"
     )
     axis.text(
         0.01,

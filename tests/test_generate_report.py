@@ -1,3 +1,4 @@
+import json
 from unittest.mock import Mock
 
 import pandas as pd
@@ -65,6 +66,11 @@ def _report_dataframes():
 
 
 def _patch_report_dependencies(monkeypatch, data):
+    monkeypatch.setattr(
+        report_module,
+        "package_version",
+        Mock(return_value="3.11.2"),
+    )
     monkeypatch.setattr(
         report_module,
         "load_test_metrics",
@@ -146,6 +152,7 @@ def test_generate_report_writes_atomic_bundle(
         )
     )
     run_directory = tmp_path / "run_001"
+    run_directory.mkdir()
     output_root = tmp_path / "reports"
 
     report_directory = generate_report(
@@ -167,6 +174,24 @@ def test_generate_report_writes_atomic_bundle(
         "cumulative_qlike.csv",
         "volatility_forecasts.png",
         "cumulative_qlike.png",
+        "report_metadata.json",
+    }
+
+    with (
+        report_directory / "report_metadata.json"
+    ).open(encoding="utf-8") as metadata_file:
+        metadata = json.load(metadata_file)
+
+    assert metadata == {
+        "source_run_id": "run_001",
+        "benchmark_name": "historical_variance",
+        "cumulative_plot_models": [
+            "garch_1_1",
+        ],
+        "cumulative_plot_excluded_models": [
+            "persistence",
+        ],
+        "matplotlib_version": "3.11.2",
     }
 
     cumulative_mock.assert_called_once_with(
@@ -184,6 +209,7 @@ def test_generate_report_refuses_existing_directory(
     tmp_path,
 ):
     run_directory = tmp_path / "run_001"
+    run_directory.mkdir()
     output_root = tmp_path / "reports"
     final_directory = output_root / "run_001"
     final_directory.mkdir(parents=True)
@@ -213,6 +239,7 @@ def test_generate_report_does_not_publish_partial_bundle(
         Mock(side_effect=RuntimeError("simulated failure")),
     )
     run_directory = tmp_path / "run_001"
+    run_directory.mkdir()
     output_root = tmp_path / "reports"
 
     with pytest.raises(
@@ -228,6 +255,24 @@ def test_generate_report_does_not_publish_partial_bundle(
     assert (
         output_root / ".run_001.incomplete"
     ).is_dir()
+
+
+def test_generate_report_requires_source_run_directory(
+    tmp_path,
+):
+    run_directory = tmp_path / "missing_run"
+    output_root = tmp_path / "reports"
+
+    with pytest.raises(
+        FileNotFoundError,
+        match="Run directory not found",
+    ):
+        generate_report(
+            run_directory=run_directory,
+            output_root=output_root,
+        )
+
+    assert not output_root.exists()
 
 
 def test_report_main_forwards_cli_arguments(

@@ -32,6 +32,27 @@ The pipeline validates the data, writes a processed CSV under
 prints validation and test metrics. It also writes a versioned result bundle
 under `results/runs/`.
 
+Generate tables and figures from one saved run without refitting any model:
+
+~~~powershell
+python -m src.generate_report --run-directory results/runs/<run_id>
+~~~
+
+The command writes an atomic report bundle under
+`results/reports/<run_id>/` containing:
+
+- `metric_summary.csv`
+- `dm_summary.csv`
+- `cumulative_qlike.csv`
+- `volatility_forecasts.png`
+- `cumulative_qlike.png`
+- `report_metadata.json`
+
+The cumulative QLIKE table retains every non-benchmark model. The default
+figure compares the candidate models with `historical_variance` and omits
+`persistence` from the plot only because its extreme QLIKE scale would hide
+the candidate-model paths. Use `--benchmark` to select another benchmark.
+
 ## Data snapshots
 
 Fetching data and running the experiment are separate commands. A normal
@@ -50,8 +71,8 @@ The metadata stores the request details, retrieval time, returned date range,
 row count, and SHA-256 checksum. Existing snapshot or metadata files are not
 overwritten. Raw and processed data are kept locally and excluded from Git.
 
-Use `python -m src.fetch_data --help` or
-`python -m src.pipeline --help` to see the available arguments.
+Use `python -m src.fetch_data --help`, `python -m src.pipeline --help`, or
+`python -m src.generate_report --help` to see the available arguments.
 
 ## Tests
 
@@ -73,6 +94,6 @@ The 2025 test-period metrics were inspected during development, so current
 2025 findings are exploratory rather than untouched confirmatory evidence.
 See [protocol amendments](docs/amendments.md).
 
-DM/HAC comparisons and Holm-adjusted results are implemented and saved in
-`dm_results.csv`. Tables and figures generated from saved artifacts remain to
-be implemented.
+DM/HAC comparisons and Holm-adjusted results are saved in `dm_results.csv`.
+Reporting reads the saved run artifacts and reproduces summary tables and
+diagnostic figures without downloading data or refitting models.

@@ -130,6 +130,8 @@ Acceptance: deterministic unit tests and hand-calculated examples pass; results 
 
 ### Phase 6 — Build reporting from saved results
 
+Status: complete.
+
 - Produce summary tables and a small set of diagnostic forecast/loss plots.
 - Read saved artifacts only; do not refit models in reporting.
 

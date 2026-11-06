@@ -1116,7 +1116,8 @@ def test_plot_test_volatility_transforms_variance_to_percent():
 
     assert plotted_labels == [
         "Realized volatility proxy",
-        *expected_columns[1:],
+        "Persistence",
+        "GARCH(1,1)",
     ]
 
     for line, column in zip(
@@ -1559,13 +1560,17 @@ def test_plot_cumulative_qlike_plots_each_model_and_zero_line():
         if not line.get_label().startswith("_")
     }
 
-    assert set(model_lines) == set(
-        cumulative.columns
-    )
+    expected_labels = {
+        "GARCH(1,1)": "garch_1_1",
+        "EWMA (lambda=0.97)": (
+            "ewma_lambda_0.97"
+        ),
+    }
+    assert set(model_lines) == set(expected_labels)
 
-    for model_name in cumulative.columns:
+    for label, model_name in expected_labels.items():
         np.testing.assert_allclose(
-            model_lines[model_name].get_ydata(),
+            model_lines[label].get_ydata(),
             cumulative[model_name],
         )
 
@@ -1598,7 +1603,7 @@ def test_plot_cumulative_qlike_sets_interpretive_labels():
         axis.get_title()
         == (
             "Cumulative QLIKE Difference vs "
-            "historical_variance"
+            "Historical variance"
         )
     )
     assert [
