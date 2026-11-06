@@ -58,16 +58,17 @@ model estimation and evaluation remain on the variance scale.*
 ## Diebold-Mariano comparisons
 
 The loss differential is QLIKE for model A minus QLIKE for model B, so a
-negative mean favors model A. P-values below are adjusted across the five
+negative mean favors model A. Raw p-values come from the individual DM tests.
+Adjusted p-values control the family-wise error rate across the five
 pre-specified comparisons using Holm's procedure.
 
-| Model A | Model B | Mean difference | DM statistic | Holm-adjusted p-value | Significant at 5% |
-|---|---|---:|---:|---:|:---:|
-| GARCH(1,1) | EWMA(0.97) | 0.074412 | 1.4095 | 0.248142 | No |
-| GARCH(1,1) | Persistence | -562.747946 | -1.7349 | 0.248142 | No |
-| GARCH(1,1) | Historical variance | -0.263616 | -7.4794 | 3.7318e-13 | Yes |
-| EWMA(0.97) | Persistence | -562.822358 | -1.7352 | 0.248142 | No |
-| EWMA(0.97) | Historical variance | -0.338028 | -4.1781 | 0.0001176 | Yes |
+| Model A | Model B | Mean difference | DM statistic | Raw p-value | Holm-adjusted p-value | Significant at 5% |
+|---|---|---:|---:|---:|---:|:---:|
+| GARCH(1,1) | EWMA(0.97) | 0.074412 | 1.4095 | 0.158682 | 0.248142 | No |
+| GARCH(1,1) | Persistence | -562.747946 | -1.7349 | 0.082758 | 0.248142 | No |
+| GARCH(1,1) | Historical variance | -0.263616 | -7.4794 | 7.4637e-14 | 3.7318e-13 | Yes |
+| EWMA(0.97) | Persistence | -562.822358 | -1.7352 | 0.082714 | 0.248142 | No |
+| EWMA(0.97) | Historical variance | -0.338028 | -4.1781 | 2.9392e-5 | 0.0001176 | Yes |
 
 EWMA had lower average QLIKE than GARCH in this sample, but their difference
 was not statistically significant after Holm adjustment. Both candidate
