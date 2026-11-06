@@ -44,7 +44,7 @@ $$
 r_t = \log(C_t/C_{t-1}), \qquad y_t=r_t^2.
 $$
 
-The target is $h_{t+1\mid t}=\operatorname{Var}(r_{t+1}\mid\mathcal F_t)$,
+The target is $h_{t+1\mid t}=\mathrm{Var}(r_{t+1}\mid\mathcal F_t)$,
 and $y_{t+1}$ is its noisy daily proxy. It is not labeled intraday realized
 variance. A forecast dated $t+1$ uses information available only through the
 close of day $t$.
@@ -91,7 +91,7 @@ not a claim that unconditional Bitcoin returns are normally distributed.
 | Starting values | $\omega_0=0.05\overline{r^2}$, $\alpha_0=0.10$, $\beta_0=0.85$ |
 | Bounds | $\omega\geq10^{-12}$, $0\leq\alpha\leq1$, $0\leq\beta\leq1$ |
 | Persistence constraint | $\alpha+\beta\leq1-10^{-8}$ |
-| Initial filtered variance | $\max(\operatorname{mean}(r^2),10^{-12})$ |
+| Initial filtered variance | $\max(\overline{r^2},10^{-12})$ |
 | Refit schedule | Every 7 forecast origins |
 | Common variance floor | $10^{-12}$ |
 
