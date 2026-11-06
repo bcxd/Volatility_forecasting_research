@@ -47,6 +47,13 @@ _TEST_TARGET_COLUMNS = (
 )
 
 
+_TEST_LOSS_COLUMNS = (
+    "QLIKE",
+    "MSE",
+    "MAE",
+)
+
+
 def _required_artifact_path(
     run_directory: Path,
     filename: str,
@@ -532,3 +539,112 @@ def plot_test_volatility(
     axis.legend()
 
     return figure, axis
+
+
+def load_test_losses(
+    run_directory: Path,
+) -> pd.DataFrame:
+    """Load daily test losses indexed by date and model."""
+    losses_path = _required_artifact_path(
+        run_directory,
+        "test_losses.csv",
+    )
+
+    losses = pd.read_csv(
+        losses_path,
+        index_col=["date", "model"],
+        parse_dates=["date"],
+    )
+
+    if tuple(losses.columns) != (
+        _TEST_LOSS_COLUMNS
+    ):
+        expected_columns = ", ".join(
+            _TEST_LOSS_COLUMNS
+        )
+        raise ValueError(
+            "test loss columns must be exactly: "
+            f"{expected_columns}"
+        )
+
+    if losses.empty:
+        raise ValueError(
+            "test losses must not be empty"
+        )
+
+    if not losses.index.is_unique:
+        raise ValueError(
+            "date-model pairs must be unique"
+        )
+
+    dates = losses.index.get_level_values(
+        "date"
+    )
+
+    if (
+        not isinstance(
+            dates,
+            pd.DatetimeIndex,
+        )
+        or dates.tz is None
+        or str(dates.tz) != "UTC"
+    ):
+        raise ValueError(
+            "test loss dates must be "
+            "timezone-aware UTC"
+        )
+
+    model_names = (
+        losses.index
+        .get_level_values("model")
+        .unique()
+    )
+
+    reference_dates = None
+
+    for model_name in model_names:
+        model_dates = losses.xs(
+            model_name,
+            level="model",
+        ).index
+
+        if not model_dates.is_monotonic_increasing:
+            raise ValueError(
+                "test loss dates must be "
+                "strictly increasing within each model"
+            )
+
+        if reference_dates is None:
+            reference_dates = model_dates
+        elif not model_dates.equals(
+            reference_dates
+        ):
+            raise ValueError(
+                "all models must share identical dates"
+            )
+
+    try:
+        losses = losses.apply(
+            pd.to_numeric,
+            errors="raise",
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "test losses must be numeric"
+        ) from error
+
+    if not np.isfinite(
+        losses.to_numpy(dtype=float)
+    ).all():
+        raise ValueError(
+            "test losses must be finite"
+        )
+
+    if (
+        losses[["MSE", "MAE"]] < 0.0
+    ).any().any():
+        raise ValueError(
+            "MSE and MAE must be nonnegative"
+        )
+
+    return losses

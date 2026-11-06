@@ -9,6 +9,7 @@ from src.reporting import (
     build_metric_summary,
     load_dm_results,
     load_test_forecast_panel,
+    load_test_losses,
     load_test_metrics,
     plot_test_volatility,
 )
@@ -1154,3 +1155,280 @@ def test_plot_test_volatility_does_not_mutate_input():
     plot_test_volatility(panel)
 
     assert_frame_equal(panel, original)
+
+
+def _valid_test_losses():
+    dates = pd.date_range(
+        "2025-01-01",
+        periods=2,
+        freq="D",
+        tz="UTC",
+    )
+
+    index = pd.MultiIndex.from_product(
+        [
+            dates,
+            [
+                "garch_1_1",
+                "ewma_lambda_0.97",
+            ],
+        ],
+        names=["date", "model"],
+    )
+
+    return pd.DataFrame(
+        {
+            "QLIKE": [-6.1, -6.2, -6.3, -6.4],
+            "MSE": [0.4, 0.3, 0.2, 0.1],
+            "MAE": [0.04, 0.03, 0.02, 0.01],
+        },
+        index=index,
+    )
+
+
+def test_load_test_losses_restores_multiindex(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    expected = _valid_test_losses()
+    expected.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    actual = load_test_losses(run_directory)
+
+    assert_frame_equal(
+        actual,
+        expected,
+        check_freq=False,
+    )
+
+
+def test_load_test_losses_requires_saved_artifact(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=(
+            "Required artifact is missing: "
+            ".*test_losses\\.csv"
+        ),
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_requires_expected_columns(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = _valid_test_losses().drop(
+        columns=["MAE"]
+    )
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test loss columns must be exactly",
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_rejects_empty_table(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = _valid_test_losses().iloc[0:0]
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test losses must not be empty",
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_requires_unique_pairs(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = _valid_test_losses()
+    losses = pd.concat(
+        [
+            losses,
+            losses.iloc[[0]],
+        ]
+    )
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="date-model pairs must be unique",
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_requires_numeric_values(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = _valid_test_losses()
+    losses["QLIKE"] = (
+        losses["QLIKE"].astype(object)
+    )
+    losses.iloc[0, 0] = "not-a-number"
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test losses must be numeric",
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_requires_finite_values(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = _valid_test_losses()
+    losses.iloc[0, 0] = float("inf")
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="test losses must be finite",
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_requires_nonnegative_mse_mae(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = _valid_test_losses()
+    losses.iloc[0, 1] = -0.1
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="MSE and MAE must be nonnegative",
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_requires_utc_dates(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = _valid_test_losses()
+
+    naive_dates = (
+        losses.index
+        .get_level_values("date")
+        .tz_localize(None)
+    )
+    models = losses.index.get_level_values(
+        "model"
+    )
+
+    losses.index = pd.MultiIndex.from_arrays(
+        [naive_dates, models],
+        names=["date", "model"],
+    )
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "test loss dates must be "
+            "timezone-aware UTC"
+        ),
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_requires_chronological_dates(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = (
+        _valid_test_losses()
+        .sort_index(
+            level="date",
+            ascending=False,
+        )
+    )
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "test loss dates must be "
+            "strictly increasing within each model"
+        ),
+    ):
+        load_test_losses(run_directory)
+
+
+def test_load_test_losses_requires_matching_model_dates(
+    tmp_path,
+):
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+
+    losses = _valid_test_losses().drop(
+        index=(
+            pd.Timestamp(
+                "2025-01-02",
+                tz="UTC",
+            ),
+            "garch_1_1",
+        )
+    )
+    losses.to_csv(
+        run_directory / "test_losses.csv"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "all models must share identical dates"
+        ),
+    ):
+        load_test_losses(run_directory)
