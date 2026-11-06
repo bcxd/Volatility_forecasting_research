@@ -1,5 +1,7 @@
 # Volatility Forecasting Research
 
+[![tests](https://github.com/bcxd/Volatility_forecasting_research/actions/workflows/tests.yml/badge.svg)](https://github.com/bcxd/Volatility_forecasting_research/actions/workflows/tests.yml)
+
 This project compares one-day-ahead BTCUSDT variance forecasts from
 persistence, expanding historical variance, EWMA, and GARCH(1,1). It uses
 daily Binance Spot candles and evaluates forecasts against squared log
@@ -90,6 +92,7 @@ Use `python -m src.fetch_data --help`, `python -m src.pipeline --help`, or
 ## Tests
 
 ~~~powershell
+python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ~~~
 
