@@ -17,7 +17,7 @@ Illustrative commands:
 ~~~text
 python -m src.fetch_data
 python -m src.pipeline --raw-path data/raw/btcusdt_1d_2019-01-01_2025-12-31.json
-python -m src.reporting --run-dir results/runs/<run_id>
+python -m src.generate_report --run-directory results/runs/<run_id>
 ~~~
 
 These are target interfaces. They should be introduced only when the corresponding phase is implemented and tested.
@@ -56,7 +56,12 @@ src/
 |-- evaluation.py          loss series and aggregate metrics
 |-- statistical_tests.py   DM tests and Holm adjustment
 |-- artifacts.py           versioned run output and metadata
-|-- reporting.py           tables and figures from saved artifacts
+|-- reporting/
+|   |-- __init__.py        stable public reporting API
+|   |-- loaders.py         load and validate saved artifacts
+|   |-- tables.py          build reporting tables
+|   `-- plots.py           build diagnostic figures
+|-- generate_report.py     reporting command and output orchestration
 `-- pipeline.py            orchestration only
 ~~~
 
@@ -78,15 +83,28 @@ results/runs/<timestamp>_<short_commit>/
 |-- test_losses.csv
 |-- test_metrics.csv
 |-- dm_results.csv
-|-- garch_refit_log.csv
-`-- figures/
+`-- garch_refit_log.csv
 ~~~
 
 `metadata.json` should include the source snapshot path and checksum, requested sample, split dates, candidate settings, selected EWMA decay, variance floor, GARCH settings, code commit, package versions, creation time, and protocol/amendment status.
 
+Reporting reads one immutable run bundle and writes a separate bundle:
+
+~~~text
+results/reports/<run_id>/
+|-- metric_summary.csv
+|-- dm_summary.csv
+|-- cumulative_qlike.csv
+|-- volatility_forecasts.png
+|-- cumulative_qlike.png
+`-- report_metadata.json
+~~~
+
 ## Delivery phases
 
 ### Phase 1 — Freeze and document the workflow
+
+Status: complete.
 
 - Record test-period exposure.
 - Lock QLIKE effect-size reporting and the exact DM/HAC rule.
@@ -95,6 +113,8 @@ results/runs/<timestamp>_<short_commit>/
 Acceptance: documentation is internally consistent, committed, and pushed; no numerical behavior changes.
 
 ### Phase 2 — Separate data acquisition
+
+Status: complete.
 
 - Make downloading an explicit command.
 - Generate a descriptive immutable snapshot filename.
@@ -105,6 +125,8 @@ Acceptance: running the experiment twice does not call Binance or modify the raw
 
 ### Phase 3 — Make the pipeline orchestration-only
 
+Status: complete.
+
 - Introduce one experiment configuration object.
 - Extract preparation, candidate generation, model selection, and final forecast stages where this reduces duplication.
 - Keep each extracted function independently testable.
@@ -112,6 +134,8 @@ Acceptance: running the experiment twice does not call Binance or modify the raw
 Acceptance: `pipeline.py` reads as a sequence of research stages and contains no model or metric formulas; all existing tests still pass.
 
 ### Phase 4 — Persist reproducible run artifacts
+
+Status: complete.
 
 - Save dated forecasts, daily losses, aggregate metrics, model-selection output, GARCH refit diagnostics, and metadata.
 - Refuse accidental overwrite of an existing run directory.
