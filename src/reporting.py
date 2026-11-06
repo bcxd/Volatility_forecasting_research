@@ -648,3 +648,93 @@ def load_test_losses(
         )
 
     return losses
+
+
+def build_cumulative_qlike_differences(
+    daily_losses: pd.DataFrame,
+    benchmark_name: str,
+) -> pd.DataFrame:
+    """Accumulate model-minus-benchmark daily QLIKE differences."""
+    qlike_by_model = daily_losses[
+        "QLIKE"
+    ].unstack(
+        level="model",
+        sort=False,
+    )
+
+    if benchmark_name not in qlike_by_model.columns:
+        raise ValueError(
+            "benchmark model not found: "
+            f"{benchmark_name}"
+        )
+
+    comparison_models = [
+        model_name
+        for model_name in qlike_by_model.columns
+        if model_name != benchmark_name
+    ]
+
+    if not comparison_models:
+        raise ValueError(
+            "at least one non-benchmark "
+            "model is required"
+        )
+
+    daily_differences = qlike_by_model.loc[
+        :,
+        comparison_models,
+    ].subtract(
+        qlike_by_model[benchmark_name],
+        axis="index",
+    )
+
+    return daily_differences.cumsum()
+
+
+def plot_cumulative_qlike(
+    cumulative_differences: pd.DataFrame,
+    benchmark_name: str,
+) -> tuple[Figure, Axes]:
+    """Plot cumulative model-minus-benchmark QLIKE differences."""
+    figure = Figure(
+        figsize=(12, 6),
+        layout="constrained",
+    )
+    axis = figure.subplots()
+
+    for model_name in cumulative_differences.columns:
+        axis.plot(
+            cumulative_differences.index,
+            cumulative_differences[model_name],
+            label=model_name,
+            linewidth=1.5,
+        )
+
+    axis.axhline(
+        0.0,
+        color="black",
+        linewidth=1.0,
+        alpha=0.6,
+    )
+    axis.set_xlabel("Date")
+    axis.set_ylabel(
+        "Cumulative QLIKE difference"
+    )
+    axis.set_title(
+        "Cumulative QLIKE Difference vs "
+        f"{benchmark_name}"
+    )
+    axis.text(
+        0.01,
+        0.02,
+        "Negative favors model",
+        transform=axis.transAxes,
+        alpha=0.7,
+    )
+    axis.grid(
+        visible=True,
+        alpha=0.25,
+    )
+    axis.legend()
+
+    return figure, axis

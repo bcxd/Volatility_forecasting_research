@@ -5,12 +5,14 @@ from matplotlib.figure import Figure
 from pandas.testing import assert_frame_equal
 
 from src.reporting import (
+    build_cumulative_qlike_differences,
     build_dm_summary,
     build_metric_summary,
     load_dm_results,
     load_test_forecast_panel,
     load_test_losses,
     load_test_metrics,
+    plot_cumulative_qlike,
     plot_test_volatility,
 )
 
@@ -1432,3 +1434,189 @@ def test_load_test_losses_requires_matching_model_dates(
         ),
     ):
         load_test_losses(run_directory)
+
+
+def test_build_cumulative_qlike_differences_matches_hand_calculation():
+    losses = _valid_test_losses()
+
+    cumulative = (
+        build_cumulative_qlike_differences(
+            losses,
+            benchmark_name="ewma_lambda_0.97",
+        )
+    )
+
+    assert cumulative.index.equals(
+        losses.index
+        .get_level_values("date")
+        .unique()
+    )
+    assert cumulative.columns.tolist() == [
+        "garch_1_1",
+    ]
+
+    np.testing.assert_allclose(
+        cumulative["garch_1_1"],
+        [0.1, 0.2],
+    )
+
+
+def test_build_cumulative_qlike_differences_uses_model_minus_benchmark():
+    losses = _valid_test_losses()
+
+    cumulative = (
+        build_cumulative_qlike_differences(
+            losses,
+            benchmark_name="garch_1_1",
+        )
+    )
+
+    np.testing.assert_allclose(
+        cumulative["ewma_lambda_0.97"],
+        [-0.1, -0.2],
+    )
+
+
+def test_build_cumulative_qlike_differences_requires_benchmark():
+    losses = _valid_test_losses()
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "benchmark model not found: "
+            "missing_model"
+        ),
+    ):
+        build_cumulative_qlike_differences(
+            losses,
+            benchmark_name="missing_model",
+        )
+
+
+def test_build_cumulative_qlike_differences_requires_comparison_model():
+    losses = _valid_test_losses().xs(
+        "garch_1_1",
+        level="model",
+        drop_level=False,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "at least one non-benchmark "
+            "model is required"
+        ),
+    ):
+        build_cumulative_qlike_differences(
+            losses,
+            benchmark_name="garch_1_1",
+        )
+
+
+def test_build_cumulative_qlike_differences_does_not_mutate_input():
+    losses = _valid_test_losses()
+    original = losses.copy(deep=True)
+
+    build_cumulative_qlike_differences(
+        losses,
+        benchmark_name="garch_1_1",
+    )
+
+    assert_frame_equal(losses, original)
+
+
+def _valid_cumulative_qlike():
+    dates = pd.date_range(
+        "2025-01-01",
+        periods=3,
+        freq="D",
+        tz="UTC",
+        name="date",
+    )
+
+    return pd.DataFrame(
+        {
+            "garch_1_1": [-0.1, -0.3, -0.2],
+            "ewma_lambda_0.97": [-0.2, -0.4, -0.6],
+        },
+        index=dates,
+    )
+
+
+def test_plot_cumulative_qlike_plots_each_model_and_zero_line():
+    cumulative = _valid_cumulative_qlike()
+
+    figure, axis = plot_cumulative_qlike(
+        cumulative,
+        benchmark_name="historical_variance",
+    )
+
+    assert isinstance(figure, Figure)
+
+    model_lines = {
+        line.get_label(): line
+        for line in axis.lines
+        if not line.get_label().startswith("_")
+    }
+
+    assert set(model_lines) == set(
+        cumulative.columns
+    )
+
+    for model_name in cumulative.columns:
+        np.testing.assert_allclose(
+            model_lines[model_name].get_ydata(),
+            cumulative[model_name],
+        )
+
+    zero_lines = [
+        line
+        for line in axis.lines
+        if line.get_label().startswith("_")
+    ]
+    assert len(zero_lines) == 1
+    np.testing.assert_allclose(
+        zero_lines[0].get_ydata(),
+        [0.0, 0.0],
+    )
+
+
+def test_plot_cumulative_qlike_sets_interpretive_labels():
+    cumulative = _valid_cumulative_qlike()
+
+    _, axis = plot_cumulative_qlike(
+        cumulative,
+        benchmark_name="historical_variance",
+    )
+
+    assert axis.get_xlabel() == "Date"
+    assert (
+        axis.get_ylabel()
+        == "Cumulative QLIKE difference"
+    )
+    assert (
+        axis.get_title()
+        == (
+            "Cumulative QLIKE Difference vs "
+            "historical_variance"
+        )
+    )
+    assert [
+        text.get_text()
+        for text in axis.texts
+    ] == [
+        "Negative favors model",
+    ]
+    assert axis.get_legend() is not None
+
+
+def test_plot_cumulative_qlike_does_not_mutate_input():
+    cumulative = _valid_cumulative_qlike()
+    original = cumulative.copy(deep=True)
+
+    plot_cumulative_qlike(
+        cumulative,
+        benchmark_name="historical_variance",
+    )
+
+    assert_frame_equal(cumulative, original)
